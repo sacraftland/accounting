@@ -183,6 +183,31 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/PERM_ESCALATION/i, 'لا يمكنك منح صلاحيات لا تملكها أنت'],
+  [/SYSTEM_ROLE/i, 'هذا دور أساسي — المالك فقط يعدّله، ولا يُحذف'],
+  [/ROLE_IN_USE/i, 'هذا الدور مستخدم — انقل أعضاءه لدور آخر أولاً'],
+  [/SELF_ROLE/i, 'لا يمكنك تغيير دورك بنفسك'],
+  [/NOT_ENOUGH_STOCK: (.*) \(available ([-\d.]+)\)/i, m => `الكمية غير كافية من «${m[1]}» في هذا المستودع (المتاح ${Number(m[2])})`],
+  [/RETURN_NEEDS_SOURCE/i, 'اختر الفاتورة المرحّلة المراد الإرجاع منها'],
+  [/RETURN_TOO_BIG/i, 'المرتجعات أكبر من قيمة الفاتورة الأصلية'],
+  [/RETURN_PARTY/i, 'المرتجع يجب أن يكون لنفس الطرف في الفاتورة الأصلية'],
+  [/SUPPLIER_REQUIRED/i, 'اختر المورد'],
+  [/NO_LINES/i, 'أضف سطراً واحداً على الأقل'],
+  [/LANDED_NO_STOCK/i, 'تكاليف الشحن تحتاج سطر صنف مخزني واحد على الأقل'],
+  [/EXPENSE_ACCOUNT/i, 'اختر حساب مصروف'],
+  [/PAID_FROM/i, 'اختر الحساب المدفوع منه: صندوق أو بنك أو عهدة أو مورد'],
+  [/ENTRY_UNBALANCED/i, 'القيد غير متوازن: مجموع المدين لا يساوي مجموع الدائن'],
+  [/ENTRY_LINES?/i, 'كل سطر إما مدين أو دائن، والقيد يحتاج سطرين على الأقل'],
+  [/REVERSE_MANUAL_ONLY/i, 'قيود المستندات تُعكس بإشعار دائن أو مرتجع، لا يدوياً'],
+  [/already reversed/i, 'هذا القيد معكوس مسبقاً'],
+  [/TRANSFER_WAREHOUSES/i, 'اختر مستودعين مختلفين'],
+  [/OPENING_COST/i, 'أدخل الكمية وتكلفة الوحدة'],
+  [/MFG_PRODUCT/i, 'المنتج التام يجب أن يكون صنفاً مخزنياً'],
+  [/MFG_COMPONENT_STOCK/i, 'المكونات يجب أن تكون أصنافاً مخزنية — الخدمات تُضاف كتكاليف إضافية'],
+  [/MFG_EMPTY/i, 'أضف مكونات أو تكاليف للأمر'],
+  [/BOM_SELF/i, 'لا يمكن أن يكون المنتج مكوّناً لنفسه'],
+  [/boms_org_id_item_id_key/i, 'لهذا المنتج قائمة مواد مسبقاً'],
+  [/roles_org_id_name_key/i, 'يوجد دور بنفس الاسم'],
   [/NOT_INVITED|database error saving new user/i, 'هذا البريد غير مدعو. اطلب من مدير الشركة إضافة بريدك أولاً'],
   [/NOT_ALLOWED_CREATE_ORG/i, 'إنشاء شركة جديدة متاح للمالك فقط'],
   [/ONLY_OWNER_ADMIN/i, 'المالك فقط يستطيع إضافة أو إزالة المديرين'],
@@ -230,10 +255,13 @@ const SupabaseAPI = (cfg) => {
   const orgId = async () => (orgCache ||= await loadOrg())?.id;
   let accepted = null;   // user id we already accepted invitations for
   async function loadOrg() { const { data: { session } } = await sb.auth.getSession(); const u = session?.user; if (!u) return null;
-    const mine = async () => ok(await sb.from('members').select('org_id,role').eq('user_id', u.id).order('created_at').limit(1));
+    const mine = async () => ok(await sb.from('members').select('org_id,role').eq('user_id', u.id).order('created_at'));
     if (accepted !== u.id) { ok(await sb.rpc('accept_invitations')); accepted = u.id; }    // joins any company that invited this email
     let m = await mine(); if (!m.length) { ok(await sb.rpc('accept_invitations')); m = await mine(); } if (!m.length) return null;
-    return { ...ok(await sb.from('orgs').select('*').eq('id', m[0].org_id).single()), my_role: m[0].role }; }
+    const pick = m.find(x => x.org_id === localStorage.getItem('daftar-org')) || m[0];
+    const org = ok(await sb.from('orgs').select('*').eq('id', pick.org_id).single());
+    const perms = ok(await sb.rpc('my_permissions', { p_org: pick.org_id })) || {};
+    return { ...org, my_role: pick.role, perms, org_count: m.length }; }
   const acctId = async k => ok(await sb.from('accounts').select('id').eq('org_id', await orgId()).eq('system_key', k).single()).id;
   const nulls = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === '' ? null : v]));
   return {
@@ -261,18 +289,18 @@ const SupabaseAPI = (cfg) => {
         p_building: f.building_no || null, p_postal: f.postal_code || null, p_district: f.district || null, p_sector: f.sector || 'general' })); orgCache = null; return { id }; },
     async updateOrg(f) {
       if (f.vat_number && !VAT_RE.test(f.vat_number)) throw new AppError('الرقم الضريبي 15 خانة ويبدأ وينتهي بالرقم 3');
-      const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer'];
+      const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer', 'allow_negative_stock'];
       const row = nulls(Object.fromEntries(Object.entries(f).filter(([k]) => allowed.includes(k))));
-      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role }; return orgCache; },
+      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role, perms: orgCache?.perms, org_count: orgCache?.org_count }; return orgCache; },
     // ---- users & invitations (owner / admin) ----
     async whoami() { return ok(await sb.rpc('whoami')); },
     async listMembers() { return ok(await sb.rpc('list_members', { p_org: await orgId() })); },
-    async listInvites() { return ok(await sb.from('invitations').select('*').eq('org_id', await orgId()).is('accepted_at', null).order('created_at', { ascending: false })); },
-    async invite(email, role) { email = (email || '').trim().toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(email)) throw new AppError('البريد الإلكتروني غير صحيح');
-      return ok(await sb.rpc('invite_member', { p_org: await orgId(), p_email: email, p_role: role })); },
+    async listInvites() { return ok(await sb.from('invitations').select('*, roles(name)').eq('org_id', await orgId()).is('accepted_at', null).order('created_at', { ascending: false })); },
+    async invite(email, roleId) { email = (email || '').trim().toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(email)) throw new AppError('البريد الإلكتروني غير صحيح');
+      if (!roleId) throw new AppError('اختر الدور'); return ok(await sb.rpc('invite_member', { p_org: await orgId(), p_email: email, p_role_id: roleId })); },
     async sendInviteLink(email) { ok(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: appUrl(), shouldCreateUser: true } })); },
     async revokeInvite(id) { ok(await sb.rpc('revoke_invitation', { p_id: id })); },
-    async setRole(userId, role) { ok(await sb.rpc('set_member_role', { p_org: await orgId(), p_user: userId, p_role: role })); },
+    async setRole(userId, roleId) { ok(await sb.rpc('set_member_role', { p_org: await orgId(), p_user: userId, p_role_id: roleId })); },
     async removeMember(userId) { ok(await sb.rpc('remove_member', { p_org: await orgId(), p_user: userId })); },
     async listAccounts() { return ok(await sb.from('accounts').select('*').eq('org_id', await orgId()).order('code')); },
     async trialBalance() { return ok(await sb.from('trial_balance').select('*').eq('org_id', await orgId()).order('code'))
@@ -290,43 +318,121 @@ const SupabaseAPI = (cfg) => {
       if (kinds) q = q.in('kind', kinds); return ok(await q).map(d => ({ ...d, party_name: d.parties?.name || 'عميل نقدي' })); },
     async getDocument(id) {
       const d = ok(await sb.from('documents').select('*, parties(*)').eq('id', id).maybeSingle()); if (!d) throw new AppError('المستند غير موجود');
-      const lines = ok(await sb.from('document_lines').select('*').eq('document_id', id).order('line_no')).map(l => ({ ...l, qty: Number(l.qty), vat_rate: Number(l.vat_rate) }));
+      const lines = ok(await sb.from('document_lines').select('*').eq('document_id', id).order('line_no')).map(l => ({ ...l, qty: Number(l.qty), vat_rate: Number(l.vat_rate), unit_cost: l.unit_cost == null ? null : Number(l.unit_cost) }));
       const entry = ok(await sb.from('journal_entries').select('*').eq('source_type', 'document').eq('source_id', id).eq('status', 'posted').maybeSingle());
+      const related = ok(await sb.from('documents').select('id,kind,number,status,total').eq('related_document_id', id));
+      const source = d.related_document_id ? ok(await sb.from('documents').select('id,kind,number,status,total,amount_paid').eq('id', d.related_document_id).maybeSingle()) : null;
       const journal = entry ? ok(await sb.from('journal_lines').select('*, accounts(code,name_ar)').eq('entry_id', entry.id)).map(l => ({ ...l, code: l.accounts.code, name_ar: l.accounts.name_ar })) : [];
       const payments = ok(await sb.from('payment_allocations').select('*, payments(*)').eq('document_id', id)).map(a => ({ ...a, payment: a.payments }));
-      return { ...d, party: d.parties, lines, entry, journal, payments };
+      return { ...d, party: d.parties, lines, entry, journal, payments, related, source };
     },
     async saveDraft(doc, lines) {
       const o = await orgId();
-      if (!doc.branch_id) { const w = ok(await sb.from('warehouses').select('id,branch_id').eq('org_id', o).limit(1).single()); doc = { ...doc, branch_id: w.branch_id, warehouse_id: w.id }; }
+      if (!doc.branch_id) { let q = sb.from('warehouses').select('id,branch_id').eq('org_id', o); q = doc.warehouse_id ? q.eq('id', doc.warehouse_id) : q.order('created_at');
+        const w = ok(await q.limit(1).single()); doc = { ...doc, branch_id: w.branch_id, warehouse_id: w.id }; }
       const row = ok(await sb.from('documents').upsert(nulls({ ...doc, org_id: o })).select().single());
       ok(await sb.from('document_lines').delete().eq('document_id', row.id));
-      if (lines.length) ok(await sb.from('document_lines').insert(lines.map((l, i) => ({ item_id: l.item_id || null, description: l.description, qty: l.qty, unit_price: l.unit_price,
+      if (lines.length) ok(await sb.from('document_lines').insert(lines.map((l, i) => ({ item_id: l.item_id || null, account_id: l.account_id || null, description: l.description, qty: l.qty, unit_price: l.unit_price,
         discount: l.discount || 0, tax_category: l.tax_category, vat_rate: l.vat_rate, document_id: row.id, org_id: o, line_no: i + 1 }))));
       return row.id;
     },
     async postSalesInvoice(id) { ok(await sb.rpc('post_sales_invoice', { doc: id })); return id; },
     async deleteDraft(id) { ok(await sb.from('documents').delete().eq('id', id).eq('status', 'draft')); },
-    async listPayments() { return ok(await sb.from('payments').select('*, parties(name)').eq('org_id', await orgId()).eq('status', 'posted').order('pay_date', { ascending: false }).order('created_at', { ascending: false }))
+    async listPayments(kind = 'receipt') { return ok(await sb.from('payments').select('*, parties(name)').eq('org_id', await orgId()).eq('kind', kind).eq('status', 'posted').order('pay_date', { ascending: false }).order('created_at', { ascending: false }))
       .map(p => ({ ...p, party_name: p.parties?.name || '—' })); },
     async createReceipt(r) {
       const amount = Number(r.amount); if (!(amount > 0)) throw new AppError('أدخل مبلغاً صحيحاً');
       if ((r.allocations || []).reduce((a, x) => a + x.amount, 0) > amount) throw new AppError('المبالغ الموزعة أكبر من مبلغ السند');
       const o = await orgId(); const key = r.method === 'cash' ? 'cash' : r.method === 'card' ? 'card_clearing' : 'bank';
-      const p = ok(await sb.from('payments').insert({ org_id: o, kind: 'receipt', party_id: r.party_id || null, pay_date: r.pay_date, amount, method: r.method, cash_account_id: await acctId(key), reference: r.reference || null }).select().single());
+      const p = ok(await sb.from('payments').insert({ org_id: o, kind: r.kind || 'receipt', party_id: r.party_id || null, pay_date: r.pay_date, amount, method: r.method, cash_account_id: r.cash_account_id || await acctId(key), reference: r.reference || null }).select().single());
       try {
         if (r.allocations?.length) ok(await sb.from('payment_allocations').insert(r.allocations.map(a => ({ payment_id: p.id, document_id: a.document_id, amount: a.amount }))));
         ok(await sb.rpc('post_payment', { p: p.id }));
       } catch (e) { await sb.from('payments').delete().eq('id', p.id).eq('status', 'draft'); throw e; }   // don't leave a half-made voucher
       return p.id;
     },
-    async partyStatement(partyId) {
-      const docs = ok(await sb.from('documents').select('id,number,issue_date,total').eq('party_id', partyId).eq('status', 'posted'));
-      const pays = ok(await sb.from('payments').select('number,pay_date,amount').eq('party_id', partyId).eq('status', 'posted'));
-      const rows = [...docs.map(d => ({ date: d.issue_date, ref: d.number, what: 'فاتورة', debit: d.total, credit: 0, link: '#/invoices/' + d.id })),
-        ...pays.map(p => ({ date: p.pay_date, ref: p.number, what: 'سند قبض', debit: 0, credit: p.amount }))].sort((a, b) => a.date.localeCompare(b.date));
+    async partyStatement(partyId, side = 'customer') {
+      // customer: + invoices, − credit notes & receipts · supplier: + bills, − returns & payments (balance = what we owe)
+      const docs = ok(await sb.from('documents').select('id,kind,number,issue_date,total').eq('party_id', partyId).eq('status', 'posted')
+        .in('kind', side === 'customer' ? ['tax_invoice', 'simplified_invoice', 'credit_note'] : ['purchase_bill', 'purchase_return']));
+      const pays = ok(await sb.from('payments').select('number,pay_date,amount').eq('party_id', partyId).eq('status', 'posted').eq('kind', side === 'customer' ? 'receipt' : 'payment'));
+      const W = { tax_invoice: 'فاتورة', simplified_invoice: 'فاتورة', credit_note: 'إشعار دائن', purchase_bill: 'فاتورة مشتريات', purchase_return: 'مرتجع مشتريات' };
+      const R = { tax_invoice: '#/invoices/', simplified_invoice: '#/invoices/', credit_note: '#/credit-notes/', purchase_bill: '#/bills/', purchase_return: '#/purchase-returns/' };
+      const plus = k => ['tax_invoice', 'simplified_invoice', 'purchase_bill'].includes(k);
+      const rows = [...docs.map(d => ({ date: d.issue_date, ref: d.number, what: W[d.kind], debit: plus(d.kind) ? d.total : 0, credit: plus(d.kind) ? 0 : d.total, link: R[d.kind] + d.id })),
+        ...pays.map(p => ({ date: p.pay_date, ref: p.number, what: side === 'customer' ? 'سند قبض' : 'سند صرف', debit: 0, credit: p.amount }))].sort((a, b) => a.date.localeCompare(b.date));
       let bal = 0; rows.forEach(r => { bal += r.debit - r.credit; r.balance = bal; }); return rows;
     },
+    // ---------- companies & permissions ----------
+    async myOrgs() { const u = (await sb.auth.getSession()).data.session?.user; if (!u) return [];
+      return ok(await sb.from('members').select('org_id,role,orgs(name_ar)').eq('user_id', u.id).order('created_at')).map(m => ({ id: m.org_id, role: m.role, name: m.orgs?.name_ar })); },
+    switchOrg(id) { localStorage.setItem('daftar-org', id); orgCache = null; },
+    async listRoles() { return ok(await sb.from('roles').select('*').eq('org_id', await orgId()).order('created_at')); },
+    async saveRole(id, name, permissions) { if (!name?.trim()) throw new AppError('اسم الدور مطلوب'); return ok(await sb.rpc('save_role', { p_org: await orgId(), p_id: id || null, p_name: name, p_permissions: permissions })); },
+    async deleteRole(id) { ok(await sb.rpc('delete_role', { p_id: id })); },
+    // ---------- documents: post / issue / convert / approval ----------
+    async postDocument(kind, id) {
+      const fn = { tax_invoice: 'post_sales_invoice', simplified_invoice: 'post_sales_invoice', credit_note: 'post_credit_note', purchase_bill: 'post_purchase_bill',
+        purchase_return: 'post_purchase_return', quote: 'issue_document', sales_order: 'issue_document', purchase_order: 'issue_document' }[kind];
+      ok(await sb.rpc(fn, { doc: id })); return id; },
+    async convertDocument(src, target) { return ok(await sb.rpc('convert_document', { src, target })); },
+    async submitForApproval(table, id) { ok(await sb.from(table).update({ submitted_at: new Date().toISOString() }).eq('id', id).eq('status', 'draft')); },
+    async relatedDocuments(id) { return ok(await sb.from('documents').select('id,kind,number,status,total').eq('related_document_id', id)); },
+    async listLanded(billId) { return ok(await sb.from('landed_costs').select('*').eq('bill_id', billId)); },
+    async saveLanded(billId, rows) { const o = await orgId(); ok(await sb.from('landed_costs').delete().eq('bill_id', billId));
+      if (rows.length) ok(await sb.from('landed_costs').insert(rows.map(r => ({ org_id: o, bill_id: billId, description: r.description, amount: r.amount })))); },
+    async listCostCenters() { return ok(await sb.from('cost_centers').select('*').eq('org_id', await orgId()).order('code')); },
+    async saveCostCenter(c) { return ok(await sb.from('cost_centers').upsert(nulls({ ...c, org_id: await orgId() })).select().single()); },
+    // ---------- expenses ----------
+    async listExpenses() { return ok(await sb.from('expenses').select('*, accounts(code,name_ar)').eq('org_id', await orgId()).order('expense_date', { ascending: false }).order('created_at', { ascending: false })); },
+    async saveExpense(x) { return ok(await sb.from('expenses').upsert(nulls({ ...x, org_id: await orgId() })).select().single()); },
+    async postExpense(id) { ok(await sb.rpc('post_expense', { e: id })); },
+    async deleteExpense(id) { ok(await sb.from('expenses').delete().eq('id', id).eq('status', 'draft')); },
+    // ---------- journal ----------
+    async listEntries() { return ok(await sb.from('journal_entries').select('*, journal_lines(debit,credit)').eq('org_id', await orgId()).eq('status', 'posted').order('number', { ascending: false }).limit(300)); },
+    async getEntry(id) { const e = ok(await sb.from('journal_entries').select('*').eq('id', id).single());
+      const lines = ok(await sb.from('journal_lines').select('*, accounts(code,name_ar), parties(name)').eq('entry_id', id));
+      const reversed = ok(await sb.from('journal_entries').select('id,number').eq('reverses_id', id)); return { ...e, lines, reversed: reversed[0] || null }; },
+    async postManualEntry(date, memo, lines) { return ok(await sb.rpc('post_manual_entry', { p_org: await orgId(), p_date: date, p_memo: memo, p_lines: lines })); },
+    async reverseEntry(id, date) { return ok(await sb.rpc('reverse_entry', { e: id, on_date: date })); },
+    // ---------- warehouses & stock ----------
+    async listWarehouses() { return ok(await sb.from('warehouses').select('*').eq('org_id', await orgId()).order('created_at')); },
+    async saveWarehouse(w) { const o = await orgId(); if (!w.branch_id) w = { ...w, branch_id: ok(await sb.from('branches').select('id').eq('org_id', o).limit(1).single()).id };
+      return ok(await sb.from('warehouses').upsert(nulls({ ...w, org_id: o })).select().single()); },
+    async stockByWarehouse() { return ok(await sb.from('stock_by_warehouse').select('*').eq('org_id', await orgId())).map(r => ({ ...r, qty: Number(r.qty) })); },
+    async listStockDocs() { return ok(await sb.from('stock_docs').select('*, stock_doc_lines(qty)').eq('org_id', await orgId()).order('doc_date', { ascending: false }).order('created_at', { ascending: false })); },
+    async getStockDoc(id) { const d = ok(await sb.from('stock_docs').select('*').eq('id', id).single());
+      return { ...d, lines: ok(await sb.from('stock_doc_lines').select('*').eq('stock_doc_id', id).order('line_no')).map(l => ({ ...l, qty: Number(l.qty), unit_cost: l.unit_cost == null ? null : Number(l.unit_cost), system_qty: l.system_qty == null ? null : Number(l.system_qty) })) }; },
+    async saveStockDoc(d, lines) { const row = ok(await sb.from('stock_docs').upsert(nulls({ ...d, org_id: await orgId() })).select().single());
+      ok(await sb.from('stock_doc_lines').delete().eq('stock_doc_id', row.id));
+      if (lines.length) ok(await sb.from('stock_doc_lines').insert(lines.map((l, i) => ({ stock_doc_id: row.id, line_no: i + 1, item_id: l.item_id, qty: l.qty, unit_cost: l.unit_cost ?? null }))));
+      return row.id; },
+    async postStockDoc(id) { ok(await sb.rpc('post_stock_doc', { sd: id })); },
+    async deleteStockDoc(id) { ok(await sb.from('stock_docs').delete().eq('id', id).eq('status', 'draft')); },
+    // ---------- manufacturing ----------
+    async listBoms() { return ok(await sb.from('boms').select('*, bom_lines(*)').eq('org_id', await orgId())).map(b => ({ ...b, output_qty: Number(b.output_qty),
+      bom_lines: b.bom_lines.sort((x, y) => x.line_no - y.line_no).map(l => ({ ...l, qty: Number(l.qty), waste_pct: Number(l.waste_pct) })) })); },
+    async saveBom(b, lines) { const o = await orgId();
+      const row = ok(await sb.from('boms').upsert(nulls({ ...(b.id ? { id: b.id } : {}), org_id: o, item_id: b.item_id, output_qty: b.output_qty, notes: b.notes })).select().single());
+      ok(await sb.from('bom_lines').delete().eq('bom_id', row.id));
+      if (lines.length) ok(await sb.from('bom_lines').insert(lines.map((l, i) => ({ bom_id: row.id, org_id: o, line_no: i + 1, item_id: l.item_id, qty: l.qty, waste_pct: l.waste_pct || 0 }))));
+      return row.id; },
+    async deleteBom(id) { ok(await sb.from('boms').delete().eq('id', id)); },
+    async listMfg() { return ok(await sb.from('mfg_orders').select('*, items(name_ar,unit), parties(name)').eq('org_id', await orgId()).order('order_date', { ascending: false }).order('created_at', { ascending: false }))
+      .map(m => ({ ...m, qty: Number(m.qty), unit_cost: m.unit_cost == null ? null : Number(m.unit_cost) })); },
+    async getMfg(id) { const m = ok(await sb.from('mfg_orders').select('*, items(name_ar,unit), parties(name)').eq('id', id).single());
+      const lines = ok(await sb.from('mfg_order_lines').select('*').eq('order_id', id).order('line_no')).map(l => ({ ...l, planned_qty: Number(l.planned_qty), actual_qty: Number(l.actual_qty), waste_qty: Number(l.waste_qty), unit_cost: l.unit_cost == null ? null : Number(l.unit_cost) }));
+      const costs = ok(await sb.from('mfg_order_costs').select('*').eq('order_id', id));
+      const entry = m.status === 'posted' ? ok(await sb.from('journal_entries').select('id,number').eq('source_type', 'stock').eq('source_id', id).maybeSingle()) : null;
+      return { ...m, qty: Number(m.qty), unit_cost: m.unit_cost == null ? null : Number(m.unit_cost), lines, costs, entry }; },
+    async saveMfg(m, lines, costs) { const o = await orgId();
+      const row = ok(await sb.from('mfg_orders').upsert(nulls({ ...m, org_id: o })).select().single());
+      ok(await sb.from('mfg_order_lines').delete().eq('order_id', row.id)); ok(await sb.from('mfg_order_costs').delete().eq('order_id', row.id));
+      if (lines.length) ok(await sb.from('mfg_order_lines').insert(lines.map((l, i) => ({ order_id: row.id, org_id: o, line_no: i + 1, item_id: l.item_id, planned_qty: l.planned_qty || 0, actual_qty: l.actual_qty || 0, waste_qty: l.waste_qty || 0 }))));
+      if (costs.length) ok(await sb.from('mfg_order_costs').insert(costs.map(c => ({ order_id: row.id, org_id: o, description: c.description, amount: c.amount, account_id: c.account_id }))));
+      return row.id; },
+    async postMfg(id) { ok(await sb.rpc('post_mfg_order', { mo: id })); },
+    async deleteMfg(id) { ok(await sb.from('mfg_orders').delete().eq('id', id).eq('status', 'draft')); },
     async resetAll() { throw new AppError('غير متاح في وضع الخادم'); },
   };
 };

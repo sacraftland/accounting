@@ -82,31 +82,39 @@ const select = (name, label, opts, value = '', extra = '') => `<div class="field
   opts.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(value) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
 
 // ---------- shell ----------
-const NAV = [
-  ['dashboard', 'home', 'الرئيسية'],
-  ['g', '', 'المبيعات'], ['invoices', 'file', 'الفواتير'], ['receipts', 'receipt', 'سندات القبض'], ['customers', 'users', 'العملاء'], ['items', 'box', 'الأصناف والخدمات'],
-  ['g', '', 'العمليات'], ['purchases', 'cart', 'المشتريات', 1], ['expenses', 'receipt', 'المصروفات', 1], ['inventory', 'box', 'المخزون', 1], ['pos', 'pos', 'نقاط البيع', 1],
-  ['g', '', 'المالية'], ['accounts', 'book', 'شجرة الحسابات'], ['trial-balance', 'chart', 'ميزان المراجعة'], ['reports', 'chart', 'التقارير المالية', 1], ['payroll', 'users', 'الرواتب', 1],
-  ['g', '', ''], ['settings', 'gear', 'الإعدادات'],
+const NAV = [   // [route, icon, label, module, local-mode too?]
+  ['dashboard', 'home', 'الرئيسية', null, 1],
+  ['g', '', 'المبيعات', 'sales'], ['invoices', 'file', 'الفواتير', 'sales', 1], ['quotes', 'file', 'عروض الأسعار', 'sales'], ['credit-notes', 'file', 'الإشعارات الدائنة', 'sales'],
+  ['receipts', 'receipt', 'سندات القبض', 'sales', 1], ['customers', 'users', 'العملاء', 'sales', 1],
+  ['g', '', 'المشتريات', 'purchases'], ['bills', 'cart', 'فواتير المشتريات', 'purchases'], ['purchase-orders', 'cart', 'أوامر الشراء', 'purchases'], ['purchase-returns', 'cart', 'مرتجعات المشتريات', 'purchases'],
+  ['payments', 'receipt', 'سندات الصرف', 'purchases'], ['suppliers', 'users', 'الموردون', 'purchases'],
+  ['g', '', 'المصروفات', 'expenses'], ['expenses', 'receipt', 'المصروفات', 'expenses'],
+  ['g', '', 'المخزون والتصنيع', 'inventory|manufacturing'], ['items', 'box', 'الأصناف والخدمات', 'sales|purchases|inventory|manufacturing', 1], ['warehouses', 'box', 'المستودعات والأرصدة', 'inventory'], ['stock', 'box', 'حركات المخزون', 'inventory'],
+  ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
+  ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
+  ['reports', 'chart', 'التقارير المالية', 'reports', 1, 1], ['payroll', 'users', 'الرواتب', 'hr', 1, 1],
+  ['g', '', '', null], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
+const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
 function shell(active, html) {
   const logo = ORG?.logo_path ? `<img src="${esc(ORG.logo_path)}" alt="" style="width:34px;height:34px;object-fit:contain;border-radius:8px;background:#fff">` : `<span class="mark">${icon('book')}</span>`;
   $('#app').innerHTML = `<div class="shell">
-    <aside class="side" id="side" aria-label="القائمة الرئيسية"><div class="brand">${logo}<span>${esc(ORG?.name_ar || 'دفتر')}</span></div>
-      <nav class="nav">${NAV.map(([k, ic, t, soon]) => k === 'g' ? (t ? `<div class="nav-group">${esc(t)}</div>` : '<div style="height:12px"></div>') :
+    <aside class="side" id="side" aria-label="القائمة الرئيسية"><div class="brand">${logo}<span>${esc(ORG?.name_ar || 'دفتر')}</span></div><div id="orgsw" style="padding:0 12px 8px"></div>
+      <nav class="nav">${NAV.filter(navVisible).filter((n, i, a) => n[0] !== 'g' || (a[i + 1] && a[i + 1][0] !== 'g')).map(([k, ic, t, , , soon]) => k === 'g' ? (t ? `<div class="nav-group">${esc(t)}</div>` : '<div style="height:12px"></div>') :
         `<a href="#/${k}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}>${icon(ic)}${esc(t)}${soon ? '<span class="xs" style="margin-inline-start:auto;opacity:.6">قريباً</span>' : ''}</a>`).join('')}</nav></aside>
     <div class="main"><header class="top">
       <button class="btn ghost icon menu-btn" aria-label="فتح القائمة" aria-controls="side" data-act="menu">${icon('menu')}</button>
       <strong class="m-hide-sm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(ORG?.name_ar || '')}</strong>
       ${api.mode === 'local' ? '<span class="mode-pill" title="البيانات محفوظة في هذا المتصفح فقط">تجريبي — على هذا الجهاز</span>' : ''}
       <span class="sp"></span>
-      <a class="btn primary sm" href="#/invoices/new">${icon('plus')}<span class="new-lbl">فاتورة جديدة</span></a>
+      ${can('sales', 'create') ? `<a class="btn primary sm" href="#/invoices/new">${icon('plus')}<span class="new-lbl">فاتورة جديدة</span></a>` : ''}
       <button class="btn ghost sm" data-act="signout">خروج</button>
     </header><main class="page" id="main" tabindex="-1">${html}</main></div></div>
     <nav class="bottom-bar" aria-label="اختصارات">
       <a href="#/dashboard" class="${active === 'dashboard' ? 'on' : ''}">${icon('home')}الرئيسية</a><a href="#/invoices/new">${icon('file')}فاتورة</a>
       <a href="#/receipts/new" class="${active === 'receipts' ? 'on' : ''}">${icon('receipt')}سند قبض</a><a href="#/trial-balance" class="${active === 'trial-balance' ? 'on' : ''}">${icon('chart')}الميزان</a></nav>`;
+  orgSwitcher().catch(() => {});
 }
 document.addEventListener('click', async e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
@@ -196,51 +204,6 @@ function noCompanyView(email) {
   $('#again').onclick = () => { ORG = null; route(); };
 }
 
-// ---------- users & permissions (owner / admin) ----------
-const ROLES = { owner: 'المالك', admin: 'مدير', accountant: 'محاسب', accountant_readonly: 'محاسب — قراءة فقط', sales: 'مبيعات', cashier: 'كاشير', storekeeper: 'أمين مستودع', hr: 'موارد بشرية' };
-const ROLE_HELP = { admin: 'كل شيء عدا إضافة المديرين', accountant: 'القيود والتقارير والفواتير', accountant_readonly: 'يرى كل شيء ولا يغيّر شيئاً — مناسب للمحاسب الخارجي', sales: 'الفواتير والعملاء وسندات القبض', cashier: 'نقاط البيع', storekeeper: 'المخزون والمشتريات', hr: 'الموظفون والرواتب' };
-async function renderMembers() {
-  const box = $('#members'); if (!box) return;
-  const isOwner = ORG.my_role === 'owner';
-  const roleOpts = Object.entries(ROLES).filter(([k]) => k !== 'owner' && (isOwner || k !== 'admin'));
-  let members, invites;
-  try { [members, invites] = await Promise.all([api.listMembers(), api.listInvites()]); } catch (x) { box.innerHTML = `<p class="note bad">${esc(x.message)}</p>`; return; }
-  box.innerHTML = `<h2>المستخدمون والصلاحيات</h2>
-    <p class="muted">لا يستطيع أحد الدخول للنظام إلا بدعوة. أضف بريد الشخص وصلاحيته، ثم أرسل له رابط النظام — يسجّل بنفس البريد أو بحساب Google ويدخل مباشرة.</p>
-    <form id="invf2" class="form-grid" novalidate>
-      ${field('email', 'البريد الإلكتروني', { type: 'email', req: true, attrs: 'dir="ltr" autocomplete="off"' })}
-      ${select('role', 'الصلاحية', roleOpts, 'accountant')}
-      <p class="help full" id="rhelp">${esc(ROLE_HELP.accountant)}</p>
-      <label class="full row" style="gap:8px"><input type="checkbox" name="send" checked> أرسل له رابط دخول على بريده الآن</label>
-      <p class="help err full" id="ierr" role="alert"></p>
-      <div class="full row"><button class="btn primary" type="submit">${icon('plus')} إضافة مستخدم</button></div></form>
-    ${invites.length ? `<h3 style="margin-top:24px">دعوات بانتظار التسجيل</h3><div class="tbl-wrap"><table><thead><tr><th>البريد</th><th>الصلاحية</th><th>التاريخ</th><th></th></tr></thead><tbody>
-      ${invites.map(i => `<tr><td dir="ltr" style="text-align:start">${esc(i.email)}</td><td>${esc(ROLES[i.role])}</td><td class="num">${esc(i.created_at.slice(0, 10))}</td>
-        <td style="text-align:end"><button class="btn ghost sm" data-resend="${esc(i.email)}">إعادة إرسال الرابط</button><button class="btn ghost sm" data-revoke="${esc(i.id)}" style="color:var(--c-danger)">إلغاء</button></td></tr>`).join('')}</tbody></table></div>` : ''}
-    <h3 style="margin-top:24px">أعضاء الشركة (${members.length})</h3><div class="tbl-wrap"><table><thead><tr><th>البريد</th><th>الصلاحية</th><th>منذ</th><th></th></tr></thead><tbody>
-      ${members.map(m => { const locked = m.role === 'owner' || m.is_me || (!isOwner && m.role === 'admin');
-        return `<tr><td dir="ltr" style="text-align:start">${esc(m.email)}${m.is_me ? ' <span class="badge b-info">أنت</span>' : ''}</td>
-        <td>${locked ? esc(ROLES[m.role]) : `<select class="input" data-role="${esc(m.user_id)}" aria-label="صلاحية ${esc(m.email)}" style="height:34px">${roleOpts.map(([k, t]) => `<option value="${k}"${k === m.role ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`}</td>
-        <td class="num">${esc(String(m.joined_at).slice(0, 10))}</td>
-        <td style="text-align:end">${locked ? '' : `<button class="btn ghost sm" data-remove="${esc(m.user_id)}" style="color:var(--c-danger)">إزالة</button>`}</td></tr>`; }).join('')}</tbody></table></div>`;
-  $('#f-role', box).onchange = e => $('#rhelp').textContent = ROLE_HELP[e.target.value] || '';
-  $('#invf2').addEventListener('submit', async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); const err = $('#ierr'); err.textContent = '';
-    const btn = $('[type=submit]', e.target); busy(btn, true);
-    try { await api.invite(f.email, f.role); let sent = false;
-      if (f.send) { try { await api.sendInviteLink(f.email.trim().toLowerCase()); sent = true; } catch (x) { toast('أُضيفت الدعوة لكن تعذّر إرسال البريد: ' + x.message, 'warn'); } }
-      toast(sent ? 'أُضيف المستخدم وأُرسل له رابط الدخول' : 'أُضيف المستخدم — أرسل له رابط النظام ليسجّل'); renderMembers(); }
-    catch (x) { err.textContent = x.message; busy(btn, false); } });
-  if (box.dataset.wired) return; box.dataset.wired = 1;
-  box.addEventListener('click', async e => { const b = e.target.closest('button'); if (!b) return;
-    try {
-      if (b.dataset.revoke) { await api.revokeInvite(b.dataset.revoke); toast('أُلغيت الدعوة'); renderMembers(); }
-      if (b.dataset.resend) { busy(b, true); await api.sendInviteLink(b.dataset.resend); toast('أُرسل رابط الدخول'); busy(b, false); }
-      if (b.dataset.remove) { if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'تأكيد الإزالة؟'; return; } await api.removeMember(b.dataset.remove); toast('أُزيل المستخدم ولن يستطيع الدخول للشركة'); renderMembers(); }
-    } catch (x) { toast(x.message, 'bad'); busy(b, false); } });
-  box.addEventListener('change', async e => { const s = e.target.closest('[data-role]'); if (!s) return;
-    try { await api.setRole(s.dataset.role, s.value); toast('تم تغيير الصلاحية'); } catch (x) { toast(x.message, 'bad'); renderMembers(); } });
-}
-
 // ---------- onboarding: company ----------
 const SECTORS = [['manufacturing', 'صناعة وتصنيع'], ['contracting', 'مقاولات'], ['retail', 'تجارة تجزئة وجملة'], ['services', 'خدمات'], ['food', 'مطاعم ومقاهي'], ['general', 'نشاط آخر']];
 const companyFields = (o = {}) => `
@@ -261,12 +224,13 @@ function onboardingView() {
     <ol class="steps" style="margin-bottom:24px"><li class="done"><span class="n">✓</span><span class="lbl">الحساب</span></li><li class="cur"><span class="n">2</span><span class="lbl">المنشأة</span></li><li><span class="n">3</span><span class="lbl">ابدأ</span></li></ol>
     <h1 style="font-size:var(--fs-lg)">عرّفنا بمنشأتك</h1><p class="muted" style="margin:4px 0 20px">ننشئ لك شجرة حسابات جاهزة وفرعاً ومستودعاً، وتقدر تعدّل كل شيء لاحقاً.</p>
     <form id="orgf" class="grid" style="gap:20px" novalidate>${companyFields()}<p class="help err" id="oerr" role="alert"></p>
-    <button class="btn primary lg" type="submit">إنشاء المنشأة</button></form></div></div>`;
+    <button class="btn primary lg" type="submit">إنشاء المنشأة</button>${NEW_ORG ? '<button type="button" class="btn ghost" id="cancelorg">رجوع</button>' : ''}</form></div></div>`;
+  if ($('#cancelorg')) $('#cancelorg').onclick = () => { NEW_ORG = false; route(); };
   $('#orgf').addEventListener('submit', async e => {
     e.preventDefault(); const err = $('#oerr'); err.textContent = '';
     try { const f = cleanCompany(Object.fromEntries(new FormData(e.target)));
       $('#app').innerHTML = loading('نجهّز حساباتك وشجرة الحسابات…');
-      await api.createOrg(f); ORG = await api.currentOrg(); toast('تم إنشاء المنشأة وشجرة الحسابات'); location.hash = '#/dashboard'; route();
+      const made = await api.createOrg(f); if (made?.id && api.switchOrg) api.switchOrg(made.id); NEW_ORG = false; ORG = await api.currentOrg(); toast('تم إنشاء المنشأة وشجرة الحسابات'); location.hash = '#/dashboard'; route();
     } catch (x) { if ($('#oerr')) $('#oerr').textContent = x.message; else { fail(x); onboardingView(); } }
   });
 }
@@ -279,9 +243,10 @@ async function dashboardView() {
   const mDocs = posted.filter(d => d.issue_date.startsWith(month));
   const sales = mDocs.reduce((a, d) => a + d.subtotal, 0), vat = mDocs.reduce((a, d) => a + d.vat_total, 0);
   const open = posted.reduce((a, d) => a + (d.total - d.amount_paid), 0), overdue = posted.filter(d => d.due_date && d.due_date < riyadhToday() && d.payment_status !== 'paid');
+  const pend = await approvalsCard().catch(() => '');
   const cash = tb.filter(r => ['1101', '1102', '1103'].includes(r.code)).reduce((a, r) => a + Number(r.balance), 0);
   $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
-    <div class="grid g4" style="margin-bottom:24px">
+    ${pend}<div class="grid g4" style="margin-bottom:24px">
       <div class="card stat"><div class="label">مبيعات هذا الشهر <span class="xs">(قبل الضريبة)</span></div><div class="val num">${money(sales)}</div><div class="xs muted">${mDocs.length} فاتورة</div></div>
       <div class="card stat"><div class="label">ضريبة المخرجات هذا الشهر</div><div class="val num">${money(vat)}</div><div class="xs muted">تُورَّد في الإقرار الضريبي</div></div>
       <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">${money(open)}</div><div class="xs ${overdue.length ? 'down' : 'muted'}">${overdue.length ? overdue.length + ' فاتورة متأخرة' : 'لا يوجد متأخر'}</div></div>
@@ -409,6 +374,7 @@ async function invoiceView(id) {
   $('#main').innerHTML = `<a class="crumb no-print" href="#/invoices">${icon('chev')} الفواتير</a>
     <div class="page-head no-print"><h1><span class="num">${esc(d.number)}</span></h1>${badge(PAY[d.payment_status])}${badge(ZAT[d.zatca_status] || ZAT.not_sent)}
       <button class="btn secondary" onclick="window.print()">${icon('down')}طباعة / PDF</button>
+      ${api.mode === 'supabase' && can('sales', 'create') ? '<button class="btn secondary" id="mkcn">إصدار إشعار دائن</button>' : ''}
       ${left > 0 ? `<a class="btn primary" href="#/receipts/new?party=${esc(d.party_id || '')}&doc=${esc(d.id)}">${icon('receipt')}تسجيل دفعة</a>` : ''}</div>
     ${!o.vat_number ? '<p class="note warn no-print" style="margin-bottom:16px">منشأتك بلا رقم ضريبي — رمز QR لن يكون صالحاً لزاتكا. أضفه من الإعدادات.</p>' : ''}
     <article class="paper" aria-label="الفاتورة">
@@ -434,16 +400,19 @@ async function invoiceView(id) {
         <tfoot><tr><td>المجموع</td><td class="amt num">${money(d.journal.reduce((a, l) => a + Number(l.debit), 0))}</td><td class="amt num">${money(d.journal.reduce((a, l) => a + Number(l.credit), 0))}</td></tr></tfoot></table></div></section>
       <section class="card"><h3 style="margin-bottom:8px">الدفعات</h3>${d.payments.length ? `<div class="tbl-wrap"><table><thead><tr><th>السند</th><th>التاريخ</th><th>الطريقة</th><th class="amt">المبلغ</th></tr></thead><tbody>
         ${d.payments.map(a => `<tr><td class="num">${esc(a.payment?.number)}</td><td class="num">${esc(a.payment?.pay_date)}</td><td>${esc(METHOD[a.payment?.method] || '')}</td><td class="amt num">${money(a.amount)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لم تُسجَّل دفعات بعد.</p>'}
-        <p class="note" style="margin-top:12px">الربط المباشر مع منصة فاتورة (زاتكا — المرحلة الثانية) يأتي في مرحلة لاحقة. رمز QR الحالي بصيغة المرحلة الأولى.</p></section></div>`;
+        ${d.related?.length ? relatedCard(d) : ''}<p class="note" style="margin-top:12px">الربط المباشر مع منصة فاتورة (زاتكا — المرحلة الثانية) يأتي في مرحلة لاحقة. رمز QR الحالي بصيغة المرحلة الأولى.</p></section></div>`;
+  wireInvoiceActions(d);
 }
 
+function wireInvoiceActions(d) { if ($('#mkcn')) $('#mkcn').onclick = async e => { e.target.disabled = true;
+  try { const nid = await api.convertDocument(d.id, 'credit_note'); toast('أُنشئت مسودة إشعار دائن — عدّل الكميات المرتجعة ثم رحّلها'); location.hash = '#/credit-notes/' + nid + '/edit'; } catch (x) { fail(x); e.target.disabled = false; } }; }
 // ---------- customers ----------
-function partyDrawer(p, after) {
-  p = p || {};
-  drawer(p.id ? 'تعديل عميل' : 'عميل جديد', `
+function partyDrawer(p, after, side = 'customer') {
+  p = p || {}; const sup = side === 'supplier';
+  drawer(p.id ? (sup ? 'تعديل مورد' : 'تعديل عميل') : (sup ? 'مورد جديد' : 'عميل جديد'), `
     ${field('name', 'الاسم', { req: true, value: p.name })}
-    ${select('kind', 'النوع', [['customer', 'عميل'], ['both', 'عميل ومورد']], p.kind || 'customer')}
-    <div class="form-grid">${field('vat_number', 'الرقم الضريبي', { value: p.vat_number, help: 'مطلوب للفاتورة الضريبية', attrs: 'inputmode="numeric" dir="ltr" maxlength="15"' })}${field('cr_number', 'السجل التجاري', { value: p.cr_number, attrs: 'inputmode="numeric" dir="ltr"' })}</div>
+    ${select('kind', 'النوع', sup ? [['supplier', 'مورد'], ['both', 'مورد وعميل']] : [['customer', 'عميل'], ['both', 'عميل ومورد']], p.kind || side)}
+    <div class="form-grid">${field('vat_number', 'الرقم الضريبي', { value: p.vat_number, help: sup ? 'مطلوب لخصم ضريبة المدخلات' : 'مطلوب للفاتورة الضريبية', attrs: 'inputmode="numeric" dir="ltr" maxlength="15"' })}${field('cr_number', 'السجل التجاري', { value: p.cr_number, attrs: 'inputmode="numeric" dir="ltr"' })}</div>
     <fieldset class="form-grid"><legend class="full">العنوان الوطني</legend>${field('city', 'المدينة', { value: p.city })}${field('district', 'الحي', { value: p.district })}${field('street', 'الشارع', { value: p.street })}${field('building_no', 'رقم المبنى', { value: p.building_no, attrs: 'inputmode="numeric" dir="ltr" maxlength="4"' })}${field('postal_code', 'الرمز البريدي', { value: p.postal_code, attrs: 'inputmode="numeric" dir="ltr" maxlength="5"' })}</fieldset>
     <div class="form-grid">${field('phone', 'الجوال', { type: 'tel', value: p.phone, attrs: 'dir="ltr"' })}${field('email', 'البريد', { type: 'email', value: p.email, attrs: 'dir="ltr"' })}</div>`,
     async f => { ['vat_number', 'cr_number', 'building_no', 'postal_code', 'phone'].forEach(k => f[k] = toLatin(f[k]));
@@ -478,17 +447,17 @@ async function customerView(id) {
 function itemDrawer(it, after) {
   it = it || { kind: 'product', tax_category: 'S', track_stock: true, unit: 'حبة' };
   const f = drawer(it.id ? 'تعديل صنف' : 'صنف أو خدمة جديدة', `
-    ${select('kind', 'النوع', [['product', 'سلعة (لها مخزون)'], ['service', 'خدمة']], it.kind)}
+    ${select('kind', 'النوع', [['product', 'سلعة / منتج تام (لها مخزون)'], ['raw_material', 'مادة خام (لها مخزون)'], ['service', 'خدمة']], it.kind)}
     ${field('name_ar', 'الاسم', { req: true, value: it.name_ar })}
     <div class="form-grid">${field('sku', 'رمز الصنف', { value: it.sku, attrs: 'dir="ltr"' })}${field('barcode', 'الباركود', { value: it.barcode, attrs: 'dir="ltr" inputmode="numeric"' })}
     ${field('unit', 'الوحدة', { value: it.unit, help: 'حبة، متر، طن، ساعة…' })}${field('sale_price', 'سعر البيع قبل الضريبة', { type: 'money', value: it.sale_price != null ? money(it.sale_price) : '', req: true })}</div>
     ${select('tax_category', 'الضريبة', Object.entries(TAXCAT), it.tax_category)}
     <div id="exw" ${['Z', 'E'].includes(it.tax_category) ? '' : 'hidden'}>${field('exemption_reason', 'سبب الإعفاء / النسبة الصفرية', { value: it.exemption_reason, help: 'يُطلب من زاتكا، مثل: تصدير سلع خارج المملكة' })}</div>
-    <div id="cw" ${it.kind === 'service' ? 'hidden' : ''}>${field('avg_cost', 'تكلفة الوحدة', { type: 'money', value: it.avg_cost ? money(it.avg_cost) : '', help: 'تُستخدم لحساب تكلفة المبيعات. ستُحدَّث تلقائياً من فواتير الشراء لاحقاً.' })}</div>`,
+    <div id="cw" ${it.kind === 'service' ? 'hidden' : ''}>${field('avg_cost', 'تكلفة الوحدة', { type: 'money', value: it.avg_cost ? money(it.avg_cost) : '', help: 'تُستخدم لحساب تكلفة المبيعات، وتُحدَّث تلقائياً بمتوسط التكلفة من فواتير الشراء والتصنيع.' })}</div>`,
     async v => { const price = toHalalas(v.sale_price); if (!Number.isFinite(price) || price < 0 || v.sale_price === '') throw new AppError('سعر البيع غير صحيح');
       const cost = v.avg_cost ? toHalalas(v.avg_cost) : 0; if (!Number.isFinite(cost) || cost < 0) throw new AppError('التكلفة غير صحيحة');
       const r = await api.saveItem({ ...(it.id ? { id: it.id } : {}), kind: v.kind, name_ar: v.name_ar.trim(), sku: v.sku || null, barcode: toLatin(v.barcode) || null, unit: v.unit || 'حبة',
-        sale_price: price, tax_category: v.tax_category, vat_rate: v.tax_category === 'S' ? 15 : 0, exemption_reason: v.exemption_reason || null, track_stock: v.kind === 'product', avg_cost: v.kind === 'product' ? cost : 0 });
+        sale_price: price, tax_category: v.tax_category, vat_rate: v.tax_category === 'S' ? 15 : 0, exemption_reason: v.exemption_reason || null, track_stock: v.kind !== 'service', avg_cost: v.kind !== 'service' ? cost : 0 });
       await after?.(r); });
   $('#f-tax_category', f).addEventListener('change', e => $('#exw', f).hidden = !['Z', 'E'].includes(e.target.value));
   $('#f-kind', f).addEventListener('change', e => $('#cw', f).hidden = e.target.value === 'service');
@@ -497,9 +466,9 @@ async function itemsView() {
   shell('items', loading()); const items = await api.listItems();
   $('#main').innerHTML = `<div class="page-head"><h1>الأصناف والخدمات</h1><button class="btn primary" id="newi">${icon('plus')}صنف جديد</button></div>
   ${items.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الاسم</th><th>النوع</th><th>الرمز</th><th class="amt">سعر البيع</th><th class="amt">التكلفة</th><th class="amt">الكمية</th><th>الضريبة</th><th></th></tr></thead><tbody>
-    ${items.map(i => `<tr><td style="white-space:normal"><b>${esc(i.name_ar)}</b></td><td class="m-sub">${i.kind === 'service' ? 'خدمة' : 'سلعة'}</td><td class="num m-hide">${esc(i.sku || '')}</td><td class="amt num">${money(i.sale_price)}</td><td class="amt num m-hide">${i.track_stock ? money(i.avg_cost) : '—'}</td>
+    ${items.map(i => `<tr><td style="white-space:normal"><b>${esc(i.name_ar)}</b></td><td class="m-sub">${i.kind === 'service' ? 'خدمة' : i.kind === 'raw_material' ? 'مادة خام' : 'سلعة'}</td><td class="num m-hide">${esc(i.sku || '')}</td><td class="amt num">${money(i.sale_price)}</td><td class="amt num m-hide">${i.track_stock ? money(i.avg_cost) : '—'}</td>
       <td class="amt num m-sub">${i.track_stock ? `<span class="${i.on_hand < 0 ? 'down' : ''}">${esc(Number(i.on_hand))} ${esc(i.unit)}</span>` : '—'}</td><td class="m-hide">${esc(TAXCAT[i.tax_category])}</td><td class="m-hide"><button class="btn ghost sm" data-edit="${esc(i.id)}">تعديل</button></td></tr>`).join('')}</tbody></table></div>
-    ${items.some(i => i.on_hand < 0) ? '<p class="note warn" style="margin-top:12px">بعض الأصناف رصيدها بالسالب — ستُسجَّل الكميات الواردة عند تفعيل فواتير الشراء في المرحلة القادمة.</p>' : ''}`
+    ${items.some(i => i.on_hand < 0) ? `<p class="note warn" style="margin-top:12px">بعض الأصناف رصيدها بالسالب — ${api.mode === 'supabase' ? 'سجّل فواتير الشراء أو رصيداً افتتاحياً من «حركات المخزون».' : 'فواتير الشراء تعمل عند الربط بالخادم.'}</p>` : ''}`
   : empty('box', 'لا توجد أصناف بعد', 'أضف السلع والخدمات التي تبيعها مع أسعارها ونوع ضريبتها.', `<button class="btn primary" id="newi2">${icon('plus')}إضافة صنف</button>`)}`;
   const add = () => itemDrawer(null, () => { toast('تمت إضافة الصنف'); itemsView(); });
   $('#newi').onclick = add; if ($('#newi2')) $('#newi2').onclick = add;
@@ -590,7 +559,7 @@ async function trialBalanceView() {
 async function settingsView() {
   shell('settings', loading()); const o = ORG;
   $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1></div>
-    <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate>
+    <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate ${can('settings', 'create') ? '' : 'inert'}>
       <fieldset><legend>الشعار</legend><div class="row"><div class="logo-prev" id="lp">${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="الشعار الحالي">` : icon('box')}</div>
         <div><input type="file" id="logo" accept="image/png,image/jpeg,image/svg+xml" aria-describedby="lh"><p class="help" id="lh">PNG أو JPG، حتى 300 كيلوبايت. يظهر على الفواتير وأعلى القائمة.</p>${o.logo_path ? '<button type="button" class="btn ghost sm" id="rmlogo">إزالة الشعار</button>' : ''}</div></div></fieldset>
       ${companyFields(o)}
@@ -602,8 +571,11 @@ async function settingsView() {
       <div class="full row"><button class="btn secondary" type="submit">حفظ والاتصال</button>${LOCAL_CFG ? `<button type="button" class="btn ghost" id="bclear">${BAKED ? 'إلغاء الإعداد المحلي' : 'العودة لوضع التجربة'}</button>` : ''}</div></form>`}
       ${api.mode === 'local' ? `<hr style="border:0;border-top:1px solid var(--c-border);margin:20px 0"><h3>بيانات تجريبية</h3><p class="muted">املأ النظام بعملاء وأصناف وفواتير لكرافت لاند لتجربته بسرعة.</p>
       <div class="row"><button class="btn secondary" id="demo">تعبئة بيانات تجريبية</button><button class="btn ghost" id="wipe" style="color:var(--c-danger)">مسح كل البيانات</button></div>` : ''}</section>
-    ${api.mode === 'supabase' && ['owner', 'admin'].includes(ORG?.my_role) ? '<section class="card" id="members" style="max-width:var(--l-form-max);margin-top:24px">' + loading() + '</section>' : ''}`;
-  renderMembers();
+    ${api.mode === 'supabase' && can('settings', 'create') ? `<section class="card" style="max-width:var(--l-form-max);margin-top:24px"><h2>المخزون</h2>
+      <label class="row" style="gap:8px"><input type="checkbox" id="negstock" ${o.allow_negative_stock ? 'checked' : ''}> السماح بالبيع والصرف بأكثر من الرصيد المتوفر</label>
+      <p class="help">عند إلغائه يرفض النظام أي فاتورة أو صرف أو أمر تصنيع يجعل رصيد صنف في مستودع بالسالب.</p></section>` : ''}
+    ${api.mode === 'supabase' && can('users') ? `<section class="card" style="max-width:var(--l-form-max);margin-top:24px"><h2>المستخدمون والصلاحيات</h2><p class="muted">أضف المستخدمين وحدد لكل دور ما يراه وينشئه ويعتمده.</p><a class="btn secondary" href="#/users">${icon('lock')}إدارة المستخدمين والأدوار</a></section>` : ''}`;
+  if ($('#negstock')) $('#negstock').onchange = async e => { try { ORG = await api.updateOrg({ allow_negative_stock: e.target.checked }); toast('تم الحفظ'); } catch (x) { fail(x); e.target.checked = !e.target.checked; } };
   let logo = o.logo_path;
   $('#logo').onchange = e => { const file = e.target.files[0]; if (!file) return; if (file.size > 300 * 1024) { toast('الملف أكبر من 300 كيلوبايت', 'bad'); e.target.value = ''; return; }
     const r = new FileReader(); r.onload = () => { logo = r.result; $('#lp').innerHTML = `<img src="${esc(logo)}" alt="الشعار الجديد">`; }; r.readAsDataURL(file); };
@@ -637,6 +609,8 @@ async function seedDemo() {
   void doc1;
 }
 
+// @@OPS@@
+
 // ---------- router ----------
 const stub = (key, title, what) => () => { shell(key, `<div class="page-head"><h1>${esc(title)}</h1></div>${empty('box', 'قيد البناء', what)}`); };
 const ROUTES = [
@@ -645,15 +619,15 @@ const ROUTES = [
   [/^#\/customers$/, customersView], [/^#\/customers\/([\w-]+)$/, m => customerView(m[1])], [/^#\/items$/, itemsView],
   [/^#\/receipts$/, receiptsView], [/^#\/receipts\/new(\?.*)?$/, m => receiptNewView(new URLSearchParams((m[1] || '').slice(1)))],
   [/^#\/accounts$/, accountsView], [/^#\/trial-balance$/, trialBalanceView], [/^#\/settings$/, settingsView],
-  [/^#\/purchases$/, stub('purchases', 'المشتريات', 'فواتير الموردين وتحديث متوسط التكلفة — المرحلة القادمة.')],
-  [/^#\/expenses$/, stub('expenses', 'المصروفات', 'المصروفات والعُهد وربطها بالمشاريع — المرحلة القادمة.')],
-  [/^#\/inventory$/, stub('inventory', 'المخزون', 'المستودعات والتحويلات والجرد — المرحلة القادمة.')],
+  ...OPS_ROUTES,
+  [/^#\/purchases$/, () => { location.hash = '#/bills'; }], [/^#\/inventory$/, () => { location.hash = '#/warehouses'; }],
   [/^#\/pos$/, stub('pos', 'نقاط البيع', 'الكاشير والورديات والعمل بدون إنترنت — المرحلة الثانية.')],
   [/^#\/reports$/, stub('reports', 'التقارير المالية', 'قائمة الدخل والمركز المالي والإقرار الضريبي — المرحلة القادمة.')],
   [/^#\/payroll$/, stub('payroll', 'الرواتب', 'الموظفون والرواتب والتأمينات ونهاية الخدمة — المرحلة الثالثة.')],
 ];
 async function route() {
   const h = location.hash || '#/dashboard';
+  $$('.drawer-bg').forEach(x => x.remove());
   try {
     const s = await api.session();
     if (!s) { recovering = false;
@@ -662,6 +636,7 @@ async function route() {
     if (api.mode === 'supabase' && (recovering || h === '#/reset')) { if (location.hash !== '#/reset') { location.hash = '#/reset'; return; } return resetView(); }
     if (['#/login', '#/signup', '#/forgot'].includes(h)) { location.hash = '#/dashboard'; return; }
     if (!ORG) { $('#app').innerHTML = loading('جارٍ فتح حسابك…'); ORG = await api.currentOrg(); }
+    if (NEW_ORG) return onboardingView();
     if (!ORG) { if (api.mode === 'supabase' && !(await api.whoami()).is_platform_admin) return noCompanyView(s.user?.email); return onboardingView(); }
     const r = ROUTES.find(([re]) => re.test(h));
     if (!r) { location.hash = '#/dashboard'; return; }
