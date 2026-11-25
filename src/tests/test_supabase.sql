@@ -13,6 +13,7 @@ begin
   exception when others then insert into t.results (name, ok, info) values (name, sqlerrm ~* pattern, sqlerrm); end;
 end $$;
 grant execute on all functions in schema t to anon, authenticated;
+insert into platform_admins values ('ali@example.com'), ('other@example.com');   -- both may create companies in these tests
 insert into auth.users values ('00000000-0000-0000-0000-0000000000aa','ali@example.com'),('00000000-0000-0000-0000-0000000000bb','other@example.com');
 
 -- ================= user A (Craft Land owner) =================

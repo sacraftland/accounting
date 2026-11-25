@@ -1,6 +1,6 @@
 # Back end status (Supabase)
 
-Live project: `craftland-accounting` (ref `ahxcjrxampkssromiafy`, eu-central-1 Frankfurt), migrations 01–03 applied 2026-11-25, live smoke test passed (rolled back). Keys baked into `deploy/index.html` (publishable key only).
+Live project: `craftland-accounting` (ref `ahxcjrxampkssromiafy`, eu-central-1 Frankfurt), migrations 01–04 applied; owner: sa.craft.land@gmail.com 2026-11-25, live smoke test passed (rolled back). Keys baked into `deploy/index.html` (publishable key only).
 
 Setup: `supabase/setup.sql` (= `01_schema.sql` + `02_supabase.sql`) pasted once into the SQL editor. Step-by-step for Ali: `deploy/README.md`.
 
@@ -12,7 +12,8 @@ Setup: `supabase/setup.sql` (= `01_schema.sql` + `02_supabase.sql`) pasted once 
 - [x] Google OAuth with Ali's own Google Cloud client (scopes: openid, email, profile — no Google verification needed)
 - [x] Expired / invalid link → clear message on login
 - [ ] Custom SMTP (Resend) before real users — built-in mailer is rate-limited
-- [ ] Invite members / roles screen, account deletion (owner closes company)
+- [x] Invite-only: sign-up gate on auth.users (platform_admins + pending invitations), owner/admin invite, revoke, change role, remove; invitee auto-joins on first sign-in (31 tests)
+- [ ] Account deletion (owner closes company); per-role screen restrictions (sales vs storekeeper) — today any non-read-only member can write
 
 ## Database hardening added in 02_supabase.sql (tested: `bash tests/run_supabase_tests.sh`, 44/44)
 - [x] anon role: no table or function access

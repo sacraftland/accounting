@@ -183,6 +183,12 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/NOT_INVITED|database error saving new user/i, 'هذا البريد غير مدعو. اطلب من مدير الشركة إضافة بريدك أولاً'],
+  [/NOT_ALLOWED_CREATE_ORG/i, 'إنشاء شركة جديدة متاح للمالك فقط'],
+  [/ONLY_OWNER_ADMIN/i, 'المالك فقط يستطيع إضافة أو إزالة المديرين'],
+  [/OWNER_PROTECTED/i, 'لا يمكن تغيير صلاحية المالك أو إزالته'],
+  [/ALREADY_MEMBER/i, 'هذا البريد عضو في الشركة مسبقاً'],
+  [/invitations_email_check/i, 'البريد الإلكتروني غير صحيح'],
   [/invalid login credentials/i, 'البريد أو كلمة المرور غير صحيحة'],
   [/email not confirmed/i, 'لم يتم تأكيد بريدك بعد — افتح رسالة التأكيد في بريدك ثم سجّل الدخول'],
   [/user already registered|already been registered/i, 'هذا البريد مسجّل — سجّل الدخول'],
@@ -222,9 +228,12 @@ const SupabaseAPI = (cfg) => {
   let orgCache = null;
   const ok = ({ data, error }) => { if (error) throw new AppError(arErr(error)); return data; };
   const orgId = async () => (orgCache ||= await loadOrg())?.id;
+  let accepted = null;   // user id we already accepted invitations for
   async function loadOrg() { const { data: { session } } = await sb.auth.getSession(); const u = session?.user; if (!u) return null;
-    const m = ok(await sb.from('members').select('org_id').eq('user_id', u.id).order('created_at').limit(1)); if (!m.length) return null;
-    return ok(await sb.from('orgs').select('*').eq('id', m[0].org_id).single()); }
+    const mine = async () => ok(await sb.from('members').select('org_id,role').eq('user_id', u.id).order('created_at').limit(1));
+    if (accepted !== u.id) { ok(await sb.rpc('accept_invitations')); accepted = u.id; }    // joins any company that invited this email
+    let m = await mine(); if (!m.length) { ok(await sb.rpc('accept_invitations')); m = await mine(); } if (!m.length) return null;
+    return { ...ok(await sb.from('orgs').select('*').eq('id', m[0].org_id).single()), my_role: m[0].role }; }
   const acctId = async k => ok(await sb.from('accounts').select('id').eq('org_id', await orgId()).eq('system_key', k).single()).id;
   const nulls = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === '' ? null : v]));
   return {
@@ -254,7 +263,17 @@ const SupabaseAPI = (cfg) => {
       if (f.vat_number && !VAT_RE.test(f.vat_number)) throw new AppError('الرقم الضريبي 15 خانة ويبدأ وينتهي بالرقم 3');
       const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer'];
       const row = nulls(Object.fromEntries(Object.entries(f).filter(([k]) => allowed.includes(k))));
-      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = r; return r; },
+      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role }; return orgCache; },
+    // ---- users & invitations (owner / admin) ----
+    async whoami() { return ok(await sb.rpc('whoami')); },
+    async listMembers() { return ok(await sb.rpc('list_members', { p_org: await orgId() })); },
+    async listInvites() { return ok(await sb.from('invitations').select('*').eq('org_id', await orgId()).is('accepted_at', null).order('created_at', { ascending: false })); },
+    async invite(email, role) { email = (email || '').trim().toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(email)) throw new AppError('البريد الإلكتروني غير صحيح');
+      return ok(await sb.rpc('invite_member', { p_org: await orgId(), p_email: email, p_role: role })); },
+    async sendInviteLink(email) { ok(await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: appUrl(), shouldCreateUser: true } })); },
+    async revokeInvite(id) { ok(await sb.rpc('revoke_invitation', { p_id: id })); },
+    async setRole(userId, role) { ok(await sb.rpc('set_member_role', { p_org: await orgId(), p_user: userId, p_role: role })); },
+    async removeMember(userId) { ok(await sb.rpc('remove_member', { p_org: await orgId(), p_user: userId })); },
     async listAccounts() { return ok(await sb.from('accounts').select('*').eq('org_id', await orgId()).order('code')); },
     async trialBalance() { return ok(await sb.from('trial_balance').select('*').eq('org_id', await orgId()).order('code'))
       .map(r => ({ ...r, debit: Number(r.debit), credit: Number(r.credit), balance: Number(r.balance) })); },

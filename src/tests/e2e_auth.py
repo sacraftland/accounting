@@ -38,7 +38,8 @@ window.supabase = { createClient(url, key, opts) {
       async getSession() { await init; return { data: { session } }; },
       async getUser() { await init; return { data: { user: session?.user || null } }; },
       onAuthStateChange(f) { subs.push(f); return { data: { subscription: { unsubscribe() {} } } }; },
-      async signUp(a) { log('signUp', a); if (a.email === 'taken@example.com') return { data: { user: { identities: [] }, session: null }, error: null };
+      async signUp(a) { log('signUp', a); if (a.email === 'stranger@example.com') return { data: {}, error: { message: 'Database error saving new user' } };
+        if (a.email === 'taken@example.com') return { data: { user: { identities: [] }, session: null }, error: null };
         return { data: { user: { id: 'u1', identities: [{}] }, session: null }, error: null }; },
       async signInWithPassword(a) { log('signInWithPassword', a); if (a.password !== 'goodpass1') return { data: {}, error: { message: 'Invalid login credentials' } };
         session = { user: { id: 'u1', email: a.email } }; localStorage.setItem('fake-session', JSON.stringify(session)); emit('SIGNED_IN', session); return { data: { user: session.user, session }, error: null }; },
@@ -50,12 +51,14 @@ window.supabase = { createClient(url, key, opts) {
       async signOut() { log('signOut'); session = null; localStorage.removeItem('fake-session'); emit('SIGNED_OUT', null); return { error: null }; },
     },
     from: q,
-    async rpc(n, a) { log('rpc:' + n, a); return { data: '11111111-1111-1111-1111-111111111111', error: null }; },
+    async rpc(n, a) { log('rpc:' + n, a); const r = window.__rpc?.[n];
+      return { data: r !== undefined ? r : '11111111-1111-1111-1111-111111111111', error: window.__rpcErr?.[n] ? { message: window.__rpcErr[n] } : null }; },
   };
 } };
 """
 CFG = "localStorage.setItem('daftar-backend', JSON.stringify({url:'https://abcd.supabase.co', key:'anon-key-anon-key-anon-key-anon-key-1234'}));"
 
+OWNER_RPC = "window.__rpc = { whoami: { email: 'sa.craft.land@gmail.com', is_platform_admin: true }, accept_invitations: 0 };"
 def calls(pg, name): return [a for n, a in pg.evaluate('window.__calls') if n == name]
 
 with sync_playwright() as p:
@@ -71,7 +74,7 @@ with sync_playwright() as p:
         return ctx, pg, errs
 
     # 1. login screen shows Google + magic link + forgot
-    ctx, pg, errs = fresh('#/login')
+    ctx, pg, errs = fresh('#/login', OWNER_RPC)
     check('client created with implicit flow', calls(pg, 'createClient')[0]['opts']['auth']['flowType'] == 'implicit')
     check('login: Google button', pg.locator('#google').is_visible())
     check('login: magic-link button', pg.locator('#magic').is_visible())
@@ -109,6 +112,8 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_timeout(400)
     pg.fill('#f-email', 'taken@example.com'); pg.fill('#f-pw', 'goodpass1'); pg.click('#authf [type=submit]'); pg.wait_for_timeout(300)
     check('signup: existing email → "sign in" message', 'مسجّل' in pg.inner_text('#aerr'))
+    pg.fill('#f-email', 'stranger@example.com'); pg.fill('#f-pw', 'goodpass1'); pg.click('#authf [type=submit]'); pg.wait_for_timeout(300)
+    check('signup: not-invited email → clear Arabic message', 'غير مدعو' in pg.inner_text('#aerr'), pg.inner_text('#aerr'))
 
     # forgot password
     pg.goto(URL + '#/forgot'); pg.wait_for_timeout(300)
@@ -120,8 +125,24 @@ with sync_playwright() as p:
     # sign in → no company yet → onboarding → create_org RPC
     pg.click('#toLogin'); pg.wait_for_timeout(300)
     pg.fill('#f-email', 'ali@example.com'); pg.fill('#f-pw', 'goodpass1'); pg.click('#authf [type=submit]'); pg.wait_for_timeout(600)
-    check('sign in → company setup screen', pg.locator('#f-name_ar').count() == 1)
+    check('sign in → invitations accepted first', len(calls(pg, 'rpc:accept_invitations')) >= 1)
+    check('owner with no company → company setup screen', pg.locator('#f-name_ar').count() == 1)
     check('no page errors', not errs, errs)
+    ctx.close()
+
+    # 1b. signed-in user who was never added to a company
+    ctx, pg, errs = fresh('#access_token=tok2&expires_in=3600', "window.__rpc = { whoami: { email: 'x@example.com', is_platform_admin: false }, accept_invitations: 0 };")
+    pg.wait_for_timeout(500)
+    check('no company + not owner → "ask for an invite" screen', 'غير مرتبط بشركة' in pg.inner_text('#app'))
+    check('…and no company-setup form', pg.locator('#f-name_ar').count() == 0)
+    pg.click('#again'); pg.wait_for_timeout(300)
+    check('"check again" re-runs accept', len(calls(pg, 'rpc:accept_invitations')) >= 3)
+    ctx.close()
+
+    # 1c. Google sign-in with an email that was not invited
+    ctx, pg, errs = fresh('#error=server_error&error_code=unexpected_failure&error_description=Database+error+saving+new+user')
+    pg.wait_for_timeout(300)
+    check('Google, not invited → clear Arabic message', 'غير مدعو' in pg.inner_text('#app'))
     ctx.close()
 
     # 2. coming back from the reset-password email
@@ -145,13 +166,31 @@ with sync_playwright() as p:
 
     # 4. Google return (signed in, company exists) → dashboard, sign out works
     ctx, pg, errs = fresh('#access_token=googletok&token_type=bearer&expires_in=3600',
-        "window.__tables = { members: [{ org_id: 'o1' }], orgs: { id: 'o1', name_ar: 'كرافت لاند', city: 'الرياض' } };")
+        "window.__tables = { members: [{ org_id: 'o1', role: 'owner' }], orgs: { id: 'o1', name_ar: 'كرافت لاند', city: 'الرياض' }, invitations: [{ id: 'i1', email: 'sales@example.com', role: 'sales', created_at: '2026-11-25T10:00:00Z' }] };"
+        "window.__rpc = { accept_invitations: 0, list_members: [{ user_id: 'u1', email: 'sa.craft.land@gmail.com', role: 'owner', joined_at: '2026-11-25', is_me: true }, { user_id: 'u2', email: 'acc@example.com', role: 'accountant', joined_at: '2026-11-25', is_me: false }] };")
     pg.wait_for_timeout(500)
     check('Google return → app with company name', 'كرافت لاند' in pg.inner_text('#app'), pg.inner_text('#app')[:80])
     check('Google return: token removed from address bar', 'access_token' not in pg.url)
     check('server mode: no "trial" pill', pg.locator('.mode-pill').count() == 0)
     pg.goto(URL + '#/settings'); pg.wait_for_timeout(500)
     check('settings: shows connected project', 'abcd.supabase.co' in pg.inner_text('#main'))
+    pg.wait_for_timeout(300)
+    t = pg.inner_text('#members')
+    check('settings: users & permissions section for owner', 'المستخدمون والصلاحيات' in t)
+    check('members: owner + accountant listed', 'sa.craft.land@gmail.com' in t and 'acc@example.com' in t)
+    check('members: pending invitation listed', 'sales@example.com' in t)
+    check('members: owner row has no remove button, accountant has one', pg.locator('#members [data-remove]').count() == 1)
+    pg.fill('#members #f-email', '  New.Person@Example.com '); pg.select_option('#members #f-role', 'storekeeper'); pg.click('#invf2 [type=submit]'); pg.wait_for_timeout(500)
+    inv = calls(pg, 'rpc:invite_member')
+    check('invite: lower-cased email + role sent', inv and inv[0]['p_email'] == 'new.person@example.com' and inv[0]['p_role'] == 'storekeeper', inv)
+    otp = calls(pg, 'signInWithOtp')
+    check('invite: login link emailed to the invitee', otp and otp[-1]['email'] == 'new.person@example.com')
+    pg.select_option('#members [data-role="u2"]', 'sales'); pg.wait_for_timeout(300)
+    check('change role calls set_member_role', calls(pg, 'rpc:set_member_role') == [{'p_org': 'o1', 'p_user': 'u2', 'p_role': 'sales'}], calls(pg, 'rpc:set_member_role'))
+    pg.click('#members [data-remove]'); pg.click('#members [data-remove]'); pg.wait_for_timeout(300)
+    check('remove asks to confirm, then calls remove_member', len(calls(pg, 'rpc:remove_member')) == 1)
+    check('invite admin option visible for owner', pg.locator('#members #f-role option[value=admin]').count() == 1)
+    pg.locator('#members').screenshot(path=str(ROOT / 'clone-screens' / 'S40-members.png'))
     pg.click('[data-act=signout]'); pg.wait_for_timeout(400)
     check('sign out → login screen', pg.locator('#authf').count() == 1 and len(calls(pg, 'signOut')) == 1)
     check('no page errors', not errs, errs)

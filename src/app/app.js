@@ -188,6 +188,59 @@ function resetView() {
     try { await api.updatePassword(f.pw); recovering = false; toast('تم تغيير كلمة المرور'); location.hash = '#/dashboard'; } catch (x) { err.textContent = x.message; busy(btn, false); } });
 }
 
+function noCompanyView(email) {
+  $('#app').innerHTML = authCard('حسابك غير مرتبط بشركة', '', `<div class="grid" style="gap:16px;text-align:center">
+    <p style="margin:0">دخلت بالبريد <b dir="ltr">${esc(email || '')}</b> لكن لا توجد شركة أضافتك بعد.</p>
+    <p class="muted" style="margin:0">اطلب من مدير الشركة إضافة بريدك من «الإعدادات ← المستخدمون والصلاحيات»، ثم سجّل الدخول مجدداً.</p>
+    <button class="btn secondary wide" id="again">تحقق مرة أخرى</button><button class="btn ghost wide" data-act="signout">تسجيل الخروج</button></div>`);
+  $('#again').onclick = () => { ORG = null; route(); };
+}
+
+// ---------- users & permissions (owner / admin) ----------
+const ROLES = { owner: 'المالك', admin: 'مدير', accountant: 'محاسب', accountant_readonly: 'محاسب — قراءة فقط', sales: 'مبيعات', cashier: 'كاشير', storekeeper: 'أمين مستودع', hr: 'موارد بشرية' };
+const ROLE_HELP = { admin: 'كل شيء عدا إضافة المديرين', accountant: 'القيود والتقارير والفواتير', accountant_readonly: 'يرى كل شيء ولا يغيّر شيئاً — مناسب للمحاسب الخارجي', sales: 'الفواتير والعملاء وسندات القبض', cashier: 'نقاط البيع', storekeeper: 'المخزون والمشتريات', hr: 'الموظفون والرواتب' };
+async function renderMembers() {
+  const box = $('#members'); if (!box) return;
+  const isOwner = ORG.my_role === 'owner';
+  const roleOpts = Object.entries(ROLES).filter(([k]) => k !== 'owner' && (isOwner || k !== 'admin'));
+  let members, invites;
+  try { [members, invites] = await Promise.all([api.listMembers(), api.listInvites()]); } catch (x) { box.innerHTML = `<p class="note bad">${esc(x.message)}</p>`; return; }
+  box.innerHTML = `<h2>المستخدمون والصلاحيات</h2>
+    <p class="muted">لا يستطيع أحد الدخول للنظام إلا بدعوة. أضف بريد الشخص وصلاحيته، ثم أرسل له رابط النظام — يسجّل بنفس البريد أو بحساب Google ويدخل مباشرة.</p>
+    <form id="invf2" class="form-grid" novalidate>
+      ${field('email', 'البريد الإلكتروني', { type: 'email', req: true, attrs: 'dir="ltr" autocomplete="off"' })}
+      ${select('role', 'الصلاحية', roleOpts, 'accountant')}
+      <p class="help full" id="rhelp">${esc(ROLE_HELP.accountant)}</p>
+      <label class="full row" style="gap:8px"><input type="checkbox" name="send" checked> أرسل له رابط دخول على بريده الآن</label>
+      <p class="help err full" id="ierr" role="alert"></p>
+      <div class="full row"><button class="btn primary" type="submit">${icon('plus')} إضافة مستخدم</button></div></form>
+    ${invites.length ? `<h3 style="margin-top:24px">دعوات بانتظار التسجيل</h3><div class="tbl-wrap"><table><thead><tr><th>البريد</th><th>الصلاحية</th><th>التاريخ</th><th></th></tr></thead><tbody>
+      ${invites.map(i => `<tr><td dir="ltr" style="text-align:start">${esc(i.email)}</td><td>${esc(ROLES[i.role])}</td><td class="num">${esc(i.created_at.slice(0, 10))}</td>
+        <td style="text-align:end"><button class="btn ghost sm" data-resend="${esc(i.email)}">إعادة إرسال الرابط</button><button class="btn ghost sm" data-revoke="${esc(i.id)}" style="color:var(--c-danger)">إلغاء</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+    <h3 style="margin-top:24px">أعضاء الشركة (${members.length})</h3><div class="tbl-wrap"><table><thead><tr><th>البريد</th><th>الصلاحية</th><th>منذ</th><th></th></tr></thead><tbody>
+      ${members.map(m => { const locked = m.role === 'owner' || m.is_me || (!isOwner && m.role === 'admin');
+        return `<tr><td dir="ltr" style="text-align:start">${esc(m.email)}${m.is_me ? ' <span class="badge b-info">أنت</span>' : ''}</td>
+        <td>${locked ? esc(ROLES[m.role]) : `<select class="input" data-role="${esc(m.user_id)}" aria-label="صلاحية ${esc(m.email)}" style="height:34px">${roleOpts.map(([k, t]) => `<option value="${k}"${k === m.role ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`}</td>
+        <td class="num">${esc(String(m.joined_at).slice(0, 10))}</td>
+        <td style="text-align:end">${locked ? '' : `<button class="btn ghost sm" data-remove="${esc(m.user_id)}" style="color:var(--c-danger)">إزالة</button>`}</td></tr>`; }).join('')}</tbody></table></div>`;
+  $('#f-role', box).onchange = e => $('#rhelp').textContent = ROLE_HELP[e.target.value] || '';
+  $('#invf2').addEventListener('submit', async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); const err = $('#ierr'); err.textContent = '';
+    const btn = $('[type=submit]', e.target); busy(btn, true);
+    try { await api.invite(f.email, f.role); let sent = false;
+      if (f.send) { try { await api.sendInviteLink(f.email.trim().toLowerCase()); sent = true; } catch (x) { toast('أُضيفت الدعوة لكن تعذّر إرسال البريد: ' + x.message, 'warn'); } }
+      toast(sent ? 'أُضيف المستخدم وأُرسل له رابط الدخول' : 'أُضيف المستخدم — أرسل له رابط النظام ليسجّل'); renderMembers(); }
+    catch (x) { err.textContent = x.message; busy(btn, false); } });
+  if (box.dataset.wired) return; box.dataset.wired = 1;
+  box.addEventListener('click', async e => { const b = e.target.closest('button'); if (!b) return;
+    try {
+      if (b.dataset.revoke) { await api.revokeInvite(b.dataset.revoke); toast('أُلغيت الدعوة'); renderMembers(); }
+      if (b.dataset.resend) { busy(b, true); await api.sendInviteLink(b.dataset.resend); toast('أُرسل رابط الدخول'); busy(b, false); }
+      if (b.dataset.remove) { if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'تأكيد الإزالة؟'; return; } await api.removeMember(b.dataset.remove); toast('أُزيل المستخدم ولن يستطيع الدخول للشركة'); renderMembers(); }
+    } catch (x) { toast(x.message, 'bad'); busy(b, false); } });
+  box.addEventListener('change', async e => { const s = e.target.closest('[data-role]'); if (!s) return;
+    try { await api.setRole(s.dataset.role, s.value); toast('تم تغيير الصلاحية'); } catch (x) { toast(x.message, 'bad'); renderMembers(); } });
+}
+
 // ---------- onboarding: company ----------
 const SECTORS = [['manufacturing', 'صناعة وتصنيع'], ['contracting', 'مقاولات'], ['retail', 'تجارة تجزئة وجملة'], ['services', 'خدمات'], ['food', 'مطاعم ومقاهي'], ['general', 'نشاط آخر']];
 const companyFields = (o = {}) => `
@@ -548,7 +601,9 @@ async function settingsView() {
       ${BAKED && !LOCAL_CFG ? '' : `<form id="bf" class="form-grid" novalidate>${field('url', 'عنوان مشروع Supabase', { value: cfg?.url || '', attrs: 'dir="ltr" placeholder="https://xxxx.supabase.co"' })}${field('key', 'المفتاح العام (anon key)', { value: cfg?.key || '', attrs: 'dir="ltr"' })}
       <div class="full row"><button class="btn secondary" type="submit">حفظ والاتصال</button>${LOCAL_CFG ? `<button type="button" class="btn ghost" id="bclear">${BAKED ? 'إلغاء الإعداد المحلي' : 'العودة لوضع التجربة'}</button>` : ''}</div></form>`}
       ${api.mode === 'local' ? `<hr style="border:0;border-top:1px solid var(--c-border);margin:20px 0"><h3>بيانات تجريبية</h3><p class="muted">املأ النظام بعملاء وأصناف وفواتير لكرافت لاند لتجربته بسرعة.</p>
-      <div class="row"><button class="btn secondary" id="demo">تعبئة بيانات تجريبية</button><button class="btn ghost" id="wipe" style="color:var(--c-danger)">مسح كل البيانات</button></div>` : ''}</section>`;
+      <div class="row"><button class="btn secondary" id="demo">تعبئة بيانات تجريبية</button><button class="btn ghost" id="wipe" style="color:var(--c-danger)">مسح كل البيانات</button></div>` : ''}</section>
+    ${api.mode === 'supabase' && ['owner', 'admin'].includes(ORG?.my_role) ? '<section class="card" id="members" style="max-width:var(--l-form-max);margin-top:24px">' + loading() + '</section>' : ''}`;
+  renderMembers();
   let logo = o.logo_path;
   $('#logo').onchange = e => { const file = e.target.files[0]; if (!file) return; if (file.size > 300 * 1024) { toast('الملف أكبر من 300 كيلوبايت', 'bad'); e.target.value = ''; return; }
     const r = new FileReader(); r.onload = () => { logo = r.result; $('#lp').innerHTML = `<img src="${esc(logo)}" alt="الشعار الجديد">`; }; r.readAsDataURL(file); };
@@ -607,7 +662,7 @@ async function route() {
     if (api.mode === 'supabase' && (recovering || h === '#/reset')) { if (location.hash !== '#/reset') { location.hash = '#/reset'; return; } return resetView(); }
     if (['#/login', '#/signup', '#/forgot'].includes(h)) { location.hash = '#/dashboard'; return; }
     if (!ORG) { $('#app').innerHTML = loading('جارٍ فتح حسابك…'); ORG = await api.currentOrg(); }
-    if (!ORG) return onboardingView();
+    if (!ORG) { if (api.mode === 'supabase' && !(await api.whoami()).is_platform_admin) return noCompanyView(s.user?.email); return onboardingView(); }
     const r = ROUTES.find(([re]) => re.test(h));
     if (!r) { location.hash = '#/dashboard'; return; }
     await r[1](h.match(r[0]));
