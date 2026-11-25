@@ -1,0 +1,77 @@
+feature,area,priority,original,clone,notes
+Sign up with 14-day trial no card,onboarding,must,yes,yes,"S02; S02; trial date stored, expiry enforcement later"
+Choose sector at signup and auto-build chart of accounts,onboarding,must,yes,partial,write our own charts; sector chosen; one 58-account chart for all sectors — per-sector charts later
+Company profile with VAT number CR and address,onboarding,must,yes,yes,ZATCA mandatory seller fields; S05 + settings; logo & invoice footer per company
+Arabic and English with RTL,platform,must,yes,partial,Arabic RTL only; English UI not yet
+Dashboard KPIs,dashboard,must,yes,yes,"S06; S06: monthly sales, VAT, receivables, cash"
+Quick entry screen,dashboard,should,yes,no,S07
+Chart of accounts tree editable,accounting,must,yes,partial,S25; S25 view with rolled-up balances; editing later
+Manual journal entries balanced,accounting,must,yes,no,S26
+Auto journal entry for every document,accounting,must,yes,partial,core of the product; sales invoices + receipts; other documents with their screens
+Journal book and general ledger,accounting,must,yes,no,S27
+Cost centers,accounting,must,yes,no,S28
+Projects with profitability report,accounting,must,yes,no,S28 S36; key for Craft Land
+Period lock and reversal of posted entries,accounting,should,inferred,no,needed for correct books
+Customers with statements,sales,must,yes,yes,S08; S08 + statement
+Tax invoice (B2B),sales,must,yes,yes,S10; S10/S11; blocks missing customer VAT/address
+Simplified invoice (B2C),sales,must,yes,yes,S10; S10/S11
+Line and invoice discounts,sales,must,yes,partial,line discounts; invoice-level discount later
+Standard zero-rated and exempt VAT per item,sales,must,yes,yes,with exemption reason
+Credit and debit notes,sales,must,inferred,no,S12
+Quotations and sales orders,sales,could,guess,no,S13
+Receipt vouchers with partial and installment payments,sales,must,yes,yes,S14; S14 auto-allocation oldest first
+Receivables aging,sales,must,yes,no,S34
+Overdue reminders by email and WhatsApp link,sales,should,yes,no,S37
+Customer credit limit,sales,could,inferred,no,
+Wholesale and retail price lists,sales,should,yes,no,
+Print templates A4 and thermal with QR,sales,must,yes,partial,S11; A4 print/PDF with QR; thermal 80mm later
+Suppliers with statements and aging,purchases,must,yes,no,S15
+Purchase invoices with partial payment,purchases,must,yes,no,S15
+Payment vouchers,purchases,must,inferred,no,S16
+Foreign-currency purchases with FX differences,purchases,should,yes,no,
+Landed costs on imports,purchases,should,yes,no,S18
+Expenses with receipt photo,expenses,must,yes,no,S17
+Employee custody (عهد),expenses,should,yes,no,S17
+Record expenses from mobile and assign to project,expenses,should,yes,no,mobile layout
+Products and services catalog with barcode,inventory,must,yes,yes,S09; S09
+Weighted average cost updated on purchase,inventory,must,yes,no,
+Auto COGS entry on sale,inventory,must,yes,yes,at item cost
+Multi-warehouse stock balances,inventory,must,yes,no,S19
+Stock transfers between warehouses,inventory,must,yes,no,S20
+Stock count with Excel import,inventory,should,yes,no,S21
+Waste and spoilage with loss entry,inventory,should,yes,no,S22
+Multi-branch,platform,must,yes,no,S19
+POS cashier with barcode,pos,must,yes,no,S23
+POS cash card and split payment,pos,must,yes,no,
+POS shifts and daily close with card settlement,pos,should,yes,no,S24
+POS offline mode with sync,pos,should,yes,no,hard part
+POS returns,pos,should,inferred,no,
+Employees file with salary and allowances,payroll,must,yes,no,S30
+Monthly payroll run with posting,payroll,must,yes,no,S31
+GOSI calculation,payroll,must,yes,no,
+End-of-service benefit calculation,payroll,must,yes,no,S32
+Leave tracking,payroll,should,yes,no,S32
+Income statement,reports,must,yes,no,S33
+Balance sheet,reports,must,yes,no,S33
+Cash flow statement,reports,should,yes,no,S33
+Trial balance,reports,must,inferred,yes,S33; S33 + CSV export
+VAT return report,reports,must,yes,no,S35
+Service and item profitability reports,reports,should,yes,no,S36
+Export to Excel and PDF,reports,must,yes,partial,S42; CSV (opens in Excel) for trial balance; print-to-PDF for invoices
+ZATCA Phase 1 QR invoice,zatca,must,yes,yes,level A; TLV QR verified by decoder
+ZATCA Phase 2 XML UUID hash chain and signing,zatca,must,yes,no,level B
+ZATCA Fatoora onboarding CSID and clearance/reporting,zatca,should,yes,no,level C; must before selling
+Users with role permissions,settings,must,yes,no,S38
+Read-only accountant access,settings,should,yes,no,S38
+Encrypted cloud with daily backups,platform,must,yes,no,
+Contracting progress billing with retention and advances,sector,should,yes,no,S29
+Clinic patient files and service billing,sector,could,yes,no,
+Education fees installments and guardian statements,sector,could,yes,no,
+Subscription plans and trial countdown,saas,should,yes,no,S40; needed to sell
+AI help assistant,platform,could,yes,no,S41
+Installable mobile web app,platform,could,inferred,no,
+Sector landing pages for marketing,marketing,could,yes,no,
+Multi-country tax rules (Jordan Kuwait UAE etc),platform,could,coming soon,skip,Saudi only for v1
+Qoyoodak brand logo copy and screenshots,brand,skip,yes,skip,their property — rebrand
+Their pre-built sector charts of accounts content,accounting,skip,yes,skip,write our own
+Partner payment-terminal and bank deals,integrations,skip,unknown,skip,business deals not product

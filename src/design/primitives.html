@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نظام التصميم — المكوّنات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* generated from tokens.json — do not edit by hand */
+:root{
+  --c-bg: #f7f3ec;
+  --c-surface: #fffdf9;
+  --c-surface-2: #efe8dc;
+  --c-border: #e2d8c8;
+  --c-border-input: #8a7b66;
+  --c-text: #2b241c;
+  --c-text-muted: #6b5d4c;
+  --c-accent: #4f6b3a;
+  --c-accent-hover: #425a30;
+  --c-accent-soft: #e6ecdc;
+  --c-on-accent: #ffffff;
+  --c-focus: #b0672b;
+  --c-danger: #a8362a;
+  --c-danger-soft: #f6e2dd;
+  --c-success: #2f6b3f;
+  --c-success-soft: #e1eedf;
+  --c-warning: #8a5a00;
+  --c-warning-soft: #f8ecd2;
+  --c-info: #2d5f7a;
+  --c-info-soft: #e0ecf2;
+  --c-sidebar: #2f2a24;
+  --c-on-sidebar: #f3ece0;
+  --c-on-sidebar-muted: #c3b7a5;
+  --font-sans: "IBM Plex Sans Arabic", "Noto Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-xs: 12px; --lh-xs: 18px; --fw-xs: 500;
+  --fs-sm: 14px; --lh-sm: 22px; --fw-sm: 400;
+  --fs-base: 16px; --lh-base: 26px; --fw-base: 400;
+  --fs-lg: 20px; --lh-lg: 30px; --fw-lg: 600;
+  --fs-xl: 28px; --lh-xl: 38px; --fw-xl: 700;
+  --fs-display: 40px; --lh-display: 52px; --fw-display: 700;
+  --sp-0: 0px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  --sh-card: 0 1px 2px rgba(60,40,20,.06), 0 1px 3px rgba(60,40,20,.10);
+  --sh-pop: 0 12px 32px rgba(60,40,20,.18);
+  --t-fast: 120ms; --t-base: 200ms; --ease: cubic-bezier(.2,.8,.2,1);
+  --l-sidebar: 264px;
+  --l-header: 60px;
+  --l-content-max: 1280px;
+  --l-form-max: 880px;
+  --l-touch-target: 44px;
+  --l-table-row: 44px;
+  --l-pos-key: 64px;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--font-sans);font-size:var(--fs-sm);line-height:var(--lh-sm);background:var(--c-bg);color:var(--c-text);-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums lining-nums;direction:ltr;unicode-bidi:isolate}
+h1,h2,h3{margin:0}
+h1{font-size:var(--fs-xl);line-height:var(--lh-xl);font-weight:var(--fw-xl)}
+h2{font-size:var(--fs-lg);line-height:var(--lh-lg);font-weight:var(--fw-lg)}
+h3{font-size:var(--fs-base);line-height:var(--lh-base);font-weight:600}
+.muted{color:var(--c-text-muted)}
+.xs{font-size:var(--fs-xs);line-height:var(--lh-xs)}
+svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.flip{transform:scaleX(-1)} [dir=ltr] .flip{transform:none}
+:focus-visible{outline:2px solid var(--c-focus);outline-offset:2px}
+
+/* shell */
+.shell{display:grid;grid-template-columns:var(--l-sidebar) 1fr;min-height:100vh}
+.side{background:var(--c-sidebar);color:var(--c-on-sidebar);padding:var(--sp-5) var(--sp-4);position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:var(--fs-lg);margin-bottom:var(--sp-6)}
+.brand .mark{width:34px;height:34px;border-radius:var(--r-md);background:var(--c-accent);display:grid;place-items:center;color:var(--c-on-accent)}
+.nav-group{color:var(--c-on-sidebar-muted);font-size:var(--fs-xs);margin:var(--sp-5) var(--sp-3) var(--sp-2)}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);color:var(--c-on-sidebar);text-decoration:none;min-height:40px}
+.nav a:hover{background:rgba(255,255,255,.06)}
+.nav a.on{background:rgba(255,255,255,.12);font-weight:600}
+.main{min-width:0}
+.top{height:var(--l-header);background:var(--c-surface);border-bottom:1px solid var(--c-border);display:flex;align-items:center;gap:var(--sp-4);padding:0 var(--sp-6);position:sticky;top:0;z-index:5}
+.top .search{flex:1;max-width:420px}
+.top .sp{flex:1}
+.menu-btn{display:none}
+.page{max-width:var(--l-content-max);margin:0 auto;padding:var(--sp-6)}
+.section{margin-bottom:var(--sp-7)}
+.section > h2{margin-bottom:var(--sp-2)}
+.section > p.muted{margin:0 0 var(--sp-4)}
+.card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);box-shadow:var(--sh-card);padding:var(--sp-5)}
+.row{display:flex;flex-wrap:wrap;gap:var(--sp-3);align-items:center}
+.grid{display:grid;gap:var(--sp-4)}
+.g4{grid-template-columns:repeat(4,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+
+/* buttons */
+.btn{font:inherit;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 var(--sp-4);border-radius:var(--r-md);border:1px solid transparent;cursor:pointer;transition:background var(--t-fast) var(--ease),border-color var(--t-fast);white-space:nowrap}
+.btn.sm{height:32px;padding:0 var(--sp-3);font-size:var(--fs-xs)} .btn.lg{height:48px;padding:0 var(--sp-5);font-size:var(--fs-base)}
+.btn.primary{background:var(--c-accent);color:var(--c-on-accent)} .btn.primary:hover{background:var(--c-accent-hover)}
+.btn.secondary{background:var(--c-surface);color:var(--c-text);border-color:var(--c-border-input)} .btn.secondary:hover{background:var(--c-surface-2)}
+.btn.ghost{background:transparent;color:var(--c-text)} .btn.ghost:hover{background:var(--c-surface-2)}
+.btn.danger{background:var(--c-danger);color:#fff}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.icon{width:40px;padding:0}
+.spin{width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:r .8s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}
+
+/* inputs */
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label{font-weight:500}
+.input{font:inherit;font-size:var(--fs-base);height:40px;padding:0 12px;border:1px solid var(--c-border-input);border-radius:var(--r-sm);background:var(--c-surface);color:var(--c-text);width:100%}
+.input:hover{border-color:var(--c-text-muted)}
+.input:focus{outline:2px solid var(--c-focus);outline-offset:0;border-color:var(--c-focus)}
+.input[readonly]{background:var(--c-surface-2)}
+.input.err{border-color:var(--c-danger)}
+.help{font-size:var(--fs-xs);color:var(--c-text-muted)} .help.err{color:var(--c-danger)}
+.affix{position:relative} .affix .input{padding-left:52px;padding-right:12px;text-align:right;direction:ltr}
+.affix span{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--c-text-muted)}
+.lead{position:relative} .lead .input{padding-inline-start:40px} .lead svg{position:absolute;inset-inline-start:12px;top:10px;color:var(--c-text-muted)}
+select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--c-text-muted) 50%),linear-gradient(135deg,var(--c-text-muted) 50%,transparent 50%);background-position:14px 18px,19px 18px;background-size:5px 5px;background-repeat:no-repeat}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:600;white-space:nowrap}
+.b-draft{background:var(--c-surface-2);color:var(--c-text-muted)}
+.b-info{background:var(--c-info-soft);color:var(--c-info)}
+.b-ok{background:var(--c-success-soft);color:var(--c-success)}
+.b-warn{background:var(--c-warning-soft);color:var(--c-warning)}
+.b-bad{background:var(--c-danger-soft);color:var(--c-danger)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+/* stat */
+.stat .label{color:var(--c-text-muted)}
+.stat .val{font-size:var(--fs-xl);line-height:var(--lh-xl);font-weight:700;margin:4px 0}
+.up{color:var(--c-success)} .down{color:var(--c-danger)}
+.spark{width:100%;height:36px;margin-top:8px}
+
+/* table */
+.tbl-wrap{overflow:auto;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface)}
+table{border-collapse:collapse;width:100%}
+th,td{padding:0 var(--sp-4);height:var(--l-table-row);text-align:start;border-bottom:1px solid var(--c-border);white-space:nowrap}
+th{background:var(--c-surface-2);font-weight:600;color:var(--c-text-muted);font-size:var(--fs-xs);position:sticky;top:0}
+td.amt,th.amt{text-align:end}
+tbody tr:hover{background:var(--c-bg)}
+tfoot td{font-weight:700;background:var(--c-surface-2);border-bottom:0}
+.skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--c-surface-2),var(--c-border),var(--c-surface-2));background-size:200% 100%;animation:sh 1.2s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+
+/* editor */
+.editor td{padding:4px 6px} .editor .input{height:36px;font-size:var(--fs-sm)}
+.totals{width:320px;margin-inline-start:auto;margin-top:var(--sp-4)}
+.totals div{display:flex;justify-content:space-between;padding:6px 0}
+.totals .grand{border-top:2px solid var(--c-text);font-size:var(--fs-lg);font-weight:700;padding-top:10px;margin-top:4px}
+
+/* tree */
+.tree{list-style:none;margin:0;padding:0}
+.tree li{display:flex;align-items:center;gap:8px;height:38px;padding-inline-start:calc(var(--d,0) * 22px)}
+.tree .code{color:var(--c-text-muted);width:48px}
+.tree .bal{margin-inline-start:auto}
+.tree .grp{font-weight:700}
+
+/* toast & modal */
+.toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--r-md);box-shadow:var(--sh-pop);background:var(--c-surface);border-inline-start:4px solid;min-width:280px}
+.toast.ok{border-color:var(--c-success)} .toast.bad{border-color:var(--c-danger)} .toast.warn{border-color:var(--c-warning)}
+.modal-demo{position:relative;border-radius:var(--r-lg);background:rgba(43,36,28,.45);padding:var(--sp-6);display:grid;place-items:center}
+.modal{background:var(--c-surface);border-radius:var(--r-lg);box-shadow:var(--sh-pop);width:min(440px,100%);padding:var(--sp-5)}
+.modal footer{display:flex;gap:8px;justify-content:flex-end;margin-top:var(--sp-5)}
+
+/* empty */
+.empty{text-align:center;padding:var(--sp-7) var(--sp-4)}
+.empty svg{width:40px;height:40px;color:var(--c-text-muted);stroke-width:1.5}
+
+/* stepper */
+.steps{display:flex;gap:0;list-style:none;margin:0;padding:0}
+.steps li{flex:1;display:flex;align-items:center;gap:8px;color:var(--c-text-muted)}
+.steps li:not(:last-child)::after{content:"";flex:1;height:2px;background:var(--c-border);margin:0 8px}
+.steps .n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--c-border);font-weight:700;background:var(--c-surface)}
+.steps .done .n{background:var(--c-accent);border-color:var(--c-accent);color:var(--c-on-accent)}
+.steps .done{color:var(--c-text)} .steps .done:not(:last-child)::after{background:var(--c-accent)}
+.steps .cur .n{border-color:var(--c-accent);color:var(--c-accent)} .steps .cur{color:var(--c-text);font-weight:600}
+
+/* POS */
+.pos{display:grid;grid-template-columns:1fr 340px;gap:var(--sp-4)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.tile{min-height:var(--l-pos-key);border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface);padding:10px;text-align:start;font:inherit;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;gap:6px}
+.tile:hover{border-color:var(--c-accent);background:var(--c-accent-soft)}
+.cart{display:flex;flex-direction:column;gap:8px}
+.cart .line{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px dashed var(--c-border)}
+.offline{background:var(--c-warning-soft);color:var(--c-warning);border-radius:var(--r-sm);padding:8px 12px;font-weight:600;display:flex;gap:8px;align-items:center}
+
+/* print preview */
+.paper{background:#fff;color:#000;border:1px solid var(--c-border);box-shadow:var(--sh-card);padding:28px;max-width:720px;margin:auto;font-size:13px}
+.paper table th{background:#f2f2f2;color:#000;position:static}
+.paper th,.paper td{height:32px;padding:0 8px;border-bottom:1px solid #ddd}
+.paper .hd{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:12px}
+.paper .qr{width:110px;height:110px;display:grid;grid-template-columns:repeat(11,1fr)}
+.paper .qr i{background:#000}
+
+/* swatches */
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.sw div{border:1px solid var(--c-border);border-radius:var(--r-md);overflow:hidden;background:var(--c-surface);font-size:var(--fs-xs)}
+.sw b{display:block;height:48px}
+.sw span{display:block;padding:6px 8px}
+.type-row{display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid var(--c-border)}
+.type-row .tag{width:80px;color:var(--c-text-muted);font-size:var(--fs-xs)}
+
+/* mobile */
+.bottom-bar{display:none}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .side{display:none}
+  .side.open{display:block;position:fixed;inset-block:0;inset-inline-start:0;width:280px;z-index:20;box-shadow:var(--sh-pop)}
+  .menu-btn{display:inline-flex}
+  .top{padding:0 var(--sp-3);gap:var(--sp-2)} .top .search{display:none}
+  .top select.input{max-width:150px;font-size:var(--fs-sm);padding-inline-end:28px}
+  .top .new-lbl{display:none} .top .btn.primary.sm{width:32px;padding:0}
+  .paper{padding:16px;overflow-x:auto;font-size:12px} .paper .hd{flex-direction:column}
+  .paper th,.paper td{padding:0 4px}
+  .page{padding:var(--sp-4);padding-bottom:96px}
+  .g4{grid-template-columns:repeat(2,1fr)} .g3,.g2{grid-template-columns:1fr}
+  .pos{grid-template-columns:1fr}
+  .totals{width:100%}
+  .bottom-bar{display:flex;position:fixed;bottom:0;inset-inline:0;background:var(--c-surface);border-top:1px solid var(--c-border);height:64px;z-index:10}
+  .bottom-bar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--c-text-muted);text-decoration:none}
+  .bottom-bar a.on{color:var(--c-accent);font-weight:600}
+  .steps .lbl{display:none}
+}
+@media (max-width:520px){ .g4{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-pos" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M4 17a3 3 0 0 1 3-3h11"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/></symbol>
+  <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m2 2 20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 5.2-2.8M19 12.9a10 10 0 0 0-2.3-1.6M2 8.8a15 15 0 0 1 4.2-2.5M22 8.8A15 15 0 0 0 11 5M12 20h.01"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 3v18l2.5-1.5L10 21l2-1.5 2 1.5 2.5-1.5L19 21V3l-2.5 1.5L14 3l-2 1.5L10 3 7.5 4.5z"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="side" id="side" aria-label="القائمة الرئيسية">
+    <div class="brand"><span class="mark"><svg class="i"><use href="#i-book"/></svg></span><span>اسم التطبيق</span></div>
+    <nav class="nav">
+      <a class="on" href="#tokens"><svg class="i"><use href="#i-home"/></svg>الرئيسية</a>
+      <div class="nav-group">العمليات</div>
+      <a href="#editor"><svg class="i"><use href="#i-file"/></svg>المبيعات</a>
+      <a href="#table"><svg class="i"><use href="#i-cart"/></svg>المشتريات</a>
+      <a href="#table"><svg class="i"><use href="#i-box"/></svg>المخزون</a>
+      <a href="#pos"><svg class="i"><use href="#i-pos"/></svg>نقاط البيع</a>
+      <div class="nav-group">المالية</div>
+      <a href="#tree"><svg class="i"><use href="#i-book"/></svg>المحاسبة</a>
+      <a href="#table"><svg class="i"><use href="#i-users"/></svg>الموارد البشرية</a>
+      <a href="#stats"><svg class="i"><use href="#i-chart"/></svg>التقارير</a>
+      <a href="#forms"><svg class="i"><use href="#i-gear"/></svg>الإعدادات</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <button class="btn ghost icon menu-btn" aria-label="فتح القائمة" onclick="document.getElementById('side').classList.toggle('open')"><svg class="i"><use href="#i-menu"/></svg></button>
+      <select class="input" style="width:auto" aria-label="الفرع"><option>كرافت لاند — الفرع الرئيسي</option><option>المستودع الصناعي</option></select>
+      <div class="lead search"><svg class="i"><use href="#i-search"/></svg><input class="input" placeholder="ابحث عن فاتورة، عميل، صنف…" aria-label="بحث"></div>
+      <span class="sp"></span>
+      <button class="btn primary sm"><svg class="i"><use href="#i-plus"/></svg><span class="new-lbl">جديد</span></button>
+      <button class="btn ghost icon" aria-label="الإشعارات"><svg class="i"><use href="#i-bell"/></svg></button>
+      <button class="btn ghost sm" onclick="toggleDir()" id="dirBtn">EN</button>
+    </header>
+
+    <main class="page">
+      <div class="section">
+        <h1>نظام التصميم</h1>
+        <p class="muted" style="margin-top:6px">كل المكوّنات بحالاتها، قبل بناء أي شاشة. ألوان دافئة طبيعية — رملي، طيني، زيتوني. اللون الأساسي مؤقت حتى خطوة الهوية.</p>
+      </div>
+
+      <!-- tokens -->
+      <section class="section" id="tokens">
+        <h2>الألوان</h2>
+        <p class="muted">كل لون له دور. 24 تركيبة نص/خلفية اجتازت معيار الوضوح AA.</p>
+        <div class="sw" id="swatches"></div>
+      </section>
+
+      <section class="section">
+        <h2>الخطوط</h2>
+        <p class="muted">IBM Plex Sans Arabic — خط مفتوح الترخيص للعربي والإنجليزي. الأرقام بعرض ثابت لتصطف في الجداول.</p>
+        <div class="card">
+          <div class="type-row"><span class="tag">display 40</span><span style="font-size:40px;line-height:52px;font-weight:700">١٢٥٬٠٠٠ <span class="num">125,000.00</span></span></div>
+          <div class="type-row"><span class="tag">xl 28</span><h1>قائمة الدخل</h1></div>
+          <div class="type-row"><span class="tag">lg 20</span><h2>فاتورة ضريبية</h2></div>
+          <div class="type-row"><span class="tag">base 16</span><span style="font-size:16px">كل عملية بيع تُسجَّل في الحسابات تلقائياً.</span></div>
+          <div class="type-row"><span class="tag">sm 14</span><span>النص الأساسي داخل الجداول والنماذج.</span></div>
+          <div class="type-row" style="border:0"><span class="tag">xs 12</span><span class="xs muted">ملاحظات صغيرة وتسميات الأعمدة</span></div>
+        </div>
+      </section>
+
+      <!-- buttons -->
+      <section class="section" id="buttons">
+        <h2>الأزرار</h2>
+        <p class="muted">أربعة أنواع، ثلاثة أحجام، وكل الحالات.</p>
+        <div class="card grid" style="gap:16px">
+          <div class="row"><button class="btn primary">حفظ وترحيل</button><button class="btn secondary">حفظ كمسودة</button><button class="btn ghost">إلغاء</button><button class="btn danger"><svg class="i"><use href="#i-trash"/></svg>حذف</button></div>
+          <div class="row"><button class="btn primary sm">صغير</button><button class="btn primary">متوسط</button><button class="btn primary lg">كبير</button><button class="btn secondary icon" aria-label="إضافة"><svg class="i"><use href="#i-plus"/></svg></button></div>
+          <div class="row"><button class="btn primary" disabled>معطّل</button><button class="btn primary" aria-busy="true"><span class="spin"></span>جارٍ الترحيل…</button><button class="btn secondary" style="outline:2px solid var(--c-focus);outline-offset:2px">حالة التركيز</button></div>
+        </div>
+      </section>
+
+      <!-- forms -->
+      <section class="section" id="forms">
+        <h2>الحقول</h2>
+        <p class="muted">المبالغ تُكتب بالأرقام 0-9 أو ٠-٩ وتتحول تلقائياً.</p>
+        <div class="card grid g3">
+          <div class="field"><label for="f1">اسم العميل</label><input id="f1" class="input" value="مؤسسة الواحة للمقاولات"></div>
+          <div class="field"><label for="f2">الرقم الضريبي</label><input id="f2" class="input err num" value="30012345" aria-describedby="f2e" style="text-align:right"><span id="f2e" class="help err">الرقم الضريبي 15 خانة ويبدأ وينتهي بـ 3</span></div>
+          <div class="field"><label for="f3">المبلغ</label><div class="affix"><input id="f3" class="input num" value="57,500.00" inputmode="decimal"><span>ر.س</span></div></div>
+          <div class="field"><label for="f4">نوع الضريبة</label><select id="f4" class="input"><option>خاضع 15%</option><option>صفري</option><option>معفى</option></select></div>
+          <div class="field"><label for="f5">تاريخ الفاتورة</label><input id="f5" type="date" class="input" value="2026-11-25"></div>
+          <div class="field"><label for="f6">رقم الفاتورة</label><input id="f6" class="input num" value="INV-0001" readonly style="text-align:right"><span class="help">يُعطى تلقائياً عند الترحيل</span></div>
+        </div>
+      </section>
+
+      <!-- badges -->
+      <section class="section">
+        <h2>شارات الحالة</h2>
+        <p class="muted">النص موجود دائماً — اللون وحده لا يكفي.</p>
+        <div class="card row">
+          <span class="badge b-draft">مسودة</span><span class="badge b-info"><span class="dot"></span>مرحّل</span><span class="badge b-ok"><span class="dot"></span>مدفوع</span><span class="badge b-warn"><span class="dot"></span>مدفوع جزئياً</span><span class="badge b-bad"><span class="dot"></span>غير مدفوع</span><span class="badge b-draft" style="text-decoration:line-through">ملغي</span>
+          <span style="width:16px"></span>
+          <span class="badge b-ok"><svg class="i" style="width:14px;height:14px"><use href="#i-check"/></svg>زاتكا: معتمد</span><span class="badge b-info">زاتكا: قيد الإرسال</span><span class="badge b-warn">زاتكا: تحذير</span><span class="badge b-bad">زاتكا: مرفوض</span>
+        </div>
+      </section>
+
+      <!-- stats -->
+      <section class="section" id="stats">
+        <h2>بطاقات المؤشرات</h2>
+        <p class="muted">لوحة التحكم — مع حالة التحميل.</p>
+        <div class="grid g4">
+          <div class="card stat"><div class="label">مبيعات الشهر</div><div class="val num">412,300</div><div class="xs up">▲ 12% عن الشهر الماضي</div><svg class="spark" viewBox="0 0 100 36" preserveAspectRatio="none"><polyline fill="none" stroke="var(--c-accent)" stroke-width="2" points="0,30 15,26 30,28 45,18 60,20 75,10 100,6"/></svg></div>
+          <div class="card stat"><div class="label">المصروفات</div><div class="val num">186,900</div><div class="xs down">▲ 4% عن الشهر الماضي</div><svg class="spark" viewBox="0 0 100 36" preserveAspectRatio="none"><polyline fill="none" stroke="var(--c-text-muted)" stroke-width="2" points="0,20 20,22 40,18 60,16 80,14 100,12"/></svg></div>
+          <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">97,750</div><div class="xs muted">منها 22,000 متأخرة</div></div>
+          <div class="card stat"><div class="label">رصيد النقدية</div><div class="skel" style="width:70%;height:28px;margin:8px 0"></div><div class="skel" style="width:50%"></div></div>
+        </div>
+      </section>
+
+      <!-- table -->
+      <section class="section" id="table">
+        <h2>الجداول</h2>
+        <p class="muted">مع صف المجاميع، وتتحول إلى بطاقات على الجوال.</p>
+        <div class="row" style="margin-bottom:12px"><span class="badge b-draft">هذا الشهر ✕</span><span class="badge b-draft">غير مدفوع ✕</span><span class="sp" style="flex:1"></span><button class="btn secondary sm"><svg class="i"><use href="#i-down"/></svg>تصدير Excel</button></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>التاريخ</th><th>المشروع</th><th class="amt">الإجمالي</th><th>الحالة</th><th>زاتكا</th></tr></thead>
+            <tbody>
+              <tr><td class="num">INV-0012</td><td>مؤسسة الواحة للمقاولات</td><td class="num">2026-11-24</td><td>كرفان موقع — نيوم</td><td class="amt num">57,500.00</td><td><span class="badge b-warn">جزئي</span></td><td><span class="badge b-ok">معتمد</span></td></tr>
+              <tr><td class="num">INV-0011</td><td>شركة الأفق للتعدين</td><td class="num">2026-11-20</td><td>هنجر حديد 30×20</td><td class="amt num">184,000.00</td><td><span class="badge b-ok">مدفوع</span></td><td><span class="badge b-ok">معتمد</span></td></tr>
+              <tr><td class="num">INV-0010</td><td>عميل نقدي</td><td class="num">2026-11-18</td><td>—</td><td class="amt num">4,600.00</td><td><span class="badge b-bad">غير مدفوع</span></td><td><span class="badge b-info">قيد الإرسال</span></td></tr>
+              <tr><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:160px"></div></td><td><div class="skel" style="width:80px"></div></td><td><div class="skel" style="width:120px"></div></td><td><div class="skel" style="width:80px;margin-inline-start:auto"></div></td><td><div class="skel" style="width:50px"></div></td><td></td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="4">الإجمالي (3 فواتير)</td><td class="amt num">246,100.00</td><td colspan="2"></td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+
+      <!-- editor -->
+      <section class="section" id="editor">
+        <h2>محرر الفاتورة</h2>
+        <p class="muted">جرّب تغيير الكمية أو السعر — المجاميع تُحسب فوراً (والخادم يعيد الحساب عند الترحيل).</p>
+        <div class="card">
+          <div class="grid g3" style="margin-bottom:16px">
+            <div class="field"><label>العميل</label><input class="input" value="مؤسسة الواحة للمقاولات"></div>
+            <div class="field"><label>المشروع / مركز التكلفة</label><select class="input"><option>كرفان موقع — نيوم</option></select></div>
+            <div class="field"><label>النوع</label><select class="input"><option>فاتورة ضريبية</option><option>فاتورة مبسطة</option></select></div>
+          </div>
+          <div class="tbl-wrap editor">
+            <table id="lines">
+              <thead><tr><th style="width:36px">#</th><th>الصنف / الوصف</th><th style="width:100px">الكمية</th><th style="width:140px">السعر</th><th style="width:120px">الضريبة</th><th class="amt" style="width:140px">الإجمالي</th><th style="width:44px"></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <button class="btn ghost sm" style="margin-top:8px" onclick="addLine()"><svg class="i"><use href="#i-plus"/></svg>إضافة سطر</button>
+          <div class="totals" aria-live="polite">
+            <div><span class="muted">المجموع قبل الضريبة</span><span class="num" id="tSub"></span></div>
+            <div><span class="muted">ضريبة القيمة المضافة</span><span class="num" id="tVat"></span></div>
+            <div class="grand"><span>الإجمالي</span><span class="num" id="tTot"></span></div>
+          </div>
+          <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn ghost">إلغاء</button><button class="btn secondary">حفظ كمسودة</button><button class="btn primary">ترحيل الفاتورة</button></div>
+        </div>
+      </section>
+
+      <!-- journal -->
+      <section class="section">
+        <h2>القيد اليومي</h2>
+        <p class="muted">لا يمكن الترحيل إلا إذا تساوى المدين والدائن.</p>
+        <div class="card">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>الحساب</th><th>مركز التكلفة</th><th class="amt">مدين</th><th class="amt">دائن</th></tr></thead>
+            <tbody>
+              <tr><td>1201 العملاء</td><td>كرفان موقع — نيوم</td><td class="amt num">57,500.00</td><td class="amt num"></td></tr>
+              <tr><td>4101 المبيعات</td><td>كرفان موقع — نيوم</td><td class="amt num"></td><td class="amt num">50,000.00</td></tr>
+              <tr><td>2201 ضريبة المخرجات</td><td>—</td><td class="amt num"></td><td class="amt num">7,000.00</td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="2">المجموع</td><td class="amt num">57,500.00</td><td class="amt num">57,000.00</td></tr></tfoot>
+          </table></div>
+          <div class="row" style="margin-top:12px;justify-content:space-between"><span class="badge b-bad"><svg class="i" style="width:14px;height:14px"><use href="#i-alert"/></svg>غير متوازن — الفرق 500.00</span><button class="btn primary" disabled>ترحيل القيد</button></div>
+        </div>
+      </section>
+
+      <!-- tree -->
+      <section class="section" id="tree">
+        <h2>شجرة الحسابات</h2>
+        <p class="muted">الحسابات الأساسية مقفلة ولا تُحذف.</p>
+        <div class="card"><ul class="tree">
+          <li class="grp" style="--d:0"><svg class="i" style="transform:rotate(90deg)"><use href="#i-chev"/></svg><span class="code num">1</span>الأصول<span class="bal num">1,284,500.00</span></li>
+          <li class="grp" style="--d:1"><svg class="i" style="transform:rotate(90deg)"><use href="#i-chev"/></svg><span class="code num">11</span>الأصول المتداولة<span class="bal num">642,200.00</span></li>
+          <li style="--d:2"><span style="width:20px"></span><span class="code num">1101</span>الصندوق<svg class="i muted" style="width:14px;height:14px"><use href="#i-lock"/></svg><span class="bal num">38,400.00</span></li>
+          <li style="--d:2"><span style="width:20px"></span><span class="code num">1201</span>العملاء<svg class="i muted" style="width:14px;height:14px"><use href="#i-lock"/></svg><span class="bal num">97,750.00</span></li>
+          <li style="--d:2"><span style="width:20px"></span><span class="code num">1301</span>المخزون — حديد ومواد خام<span class="bal num">506,050.00</span></li>
+          <li class="grp" style="--d:0"><svg class="i flip"><use href="#i-chev"/></svg><span class="code num">2</span>الخصوم<span class="bal num">412,900.00</span></li>
+        </ul></div>
+      </section>
+
+      <!-- stepper, toasts, modal, empty -->
+      <section class="section">
+        <h2>الخطوات، التنبيهات، النوافذ، والحالة الفارغة</h2>
+        <div class="grid" style="gap:16px">
+          <div class="card"><ol class="steps">
+            <li class="done"><span class="n">✓</span><span class="lbl">رمز التحقق</span></li>
+            <li class="done"><span class="n">✓</span><span class="lbl">إنشاء الشهادة</span></li>
+            <li class="cur"><span class="n">3</span><span class="lbl">فواتير الاختبار</span></li>
+            <li><span class="n">4</span><span class="lbl">الربط النهائي</span></li>
+          </ol><p class="xs muted" style="margin:12px 0 0">مثال: خطوات الربط مع زاتكا</p></div>
+          <div class="grid g3">
+            <div class="toast ok"><svg class="i up"><use href="#i-check"/></svg>تم ترحيل الفاتورة INV-0012</div>
+            <div class="toast bad"><svg class="i down"><use href="#i-x"/></svg>رفضت زاتكا الفاتورة — عنوان المشتري ناقص</div>
+            <div class="toast warn"><svg class="i" style="color:var(--c-warning)"><use href="#i-wifi-off"/></svg>أنت غير متصل — سيتم الحفظ عند عودة الاتصال</div>
+          </div>
+          <div class="grid g2">
+            <div class="modal-demo"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
+              <h2 id="mt">تسجيل دفعة</h2>
+              <p class="muted" style="margin:4px 0 16px">الفاتورة INV-0012 — المتبقي <span class="num">27,500.00</span> ر.س</p>
+              <div class="grid g2"><div class="field"><label>المبلغ</label><div class="affix"><input class="input num" value="27,500.00"><span>ر.س</span></div></div><div class="field"><label>طريقة الدفع</label><select class="input"><option>تحويل بنكي</option><option>نقداً</option><option>شبكة</option></select></div></div>
+              <footer><button class="btn ghost">إلغاء</button><button class="btn primary">تسجيل سند القبض</button></footer>
+            </div></div>
+            <div class="card empty"><svg class="i"><use href="#i-receipt"/></svg><h3 style="margin:12px 0 4px">لا توجد فواتير بعد</h3><p class="muted" style="margin:0 0 16px">أصدر أول فاتورة وسيتم قيدها في الحسابات تلقائياً.</p><button class="btn primary"><svg class="i"><use href="#i-plus"/></svg>فاتورة جديدة</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- POS -->
+      <section class="section" id="pos">
+        <h2>نقطة البيع</h2>
+        <p class="muted">أزرار كبيرة للمس، ويعمل بدون إنترنت مؤقتاً.</p>
+        <div class="offline" style="margin-bottom:12px"><svg class="i"><use href="#i-wifi-off"/></svg>وضع عدم الاتصال — 3 عمليات بانتظار المزامنة</div>
+        <div class="pos">
+          <div class="card">
+            <div class="lead" style="margin-bottom:12px"><svg class="i"><use href="#i-search"/></svg><input class="input" placeholder="امسح الباركود أو ابحث" aria-label="باركود"></div>
+            <div class="tiles" id="tiles"></div>
+          </div>
+          <div class="card cart">
+            <h3>السلة</h3>
+            <div id="cart"></div>
+            <div class="totals" style="width:100%"><div class="grand"><span>الإجمالي</span><span class="num" id="cTot">0.00</span></div></div>
+            <div class="grid g2" style="gap:8px"><button class="btn secondary lg">نقداً</button><button class="btn secondary lg">شبكة</button></div>
+            <button class="btn primary lg" style="width:100%">الدفع</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- print -->
+      <section class="section">
+        <h2>قالب الطباعة — فاتورة ضريبية A4</h2>
+        <p class="muted">أسود على أبيض فقط، مع رمز QR. (الرمز هنا شكل توضيحي.)</p>
+        <div class="paper">
+          <div class="hd">
+            <div><b style="font-size:18px">كرافت لاند</b><br>الرقم الضريبي: <span class="num">300000000000003</span><br>السجل التجاري: <span class="num">1010000000</span><br>الرياض، المنطقة الصناعية الثانية</div>
+            <div style="text-align:end"><b style="font-size:18px">فاتورة ضريبية<br>Tax Invoice</b><br>رقم: <span class="num">INV-0012</span><br>التاريخ: <span class="num">2026-11-24 10:42</span></div>
+          </div>
+          <p style="margin:0 0 10px"><b>العميل:</b> مؤسسة الواحة للمقاولات — الرقم الضريبي <span class="num">311111111111113</span> — جدة، حي الصناعية، مبنى 4410</p>
+          <table><thead><tr><th>الوصف</th><th>الكمية</th><th class="amt">السعر</th><th class="amt">الضريبة 15%</th><th class="amt">الإجمالي</th></tr></thead>
+            <tbody><tr><td>كرفان مكتبي 6×3 م</td><td class="num">1</td><td class="amt num">50,000.00</td><td class="amt num">7,500.00</td><td class="amt num">57,500.00</td></tr></tbody></table>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px">
+            <div class="qr" id="qr" aria-label="رمز QR"></div>
+            <div style="width:260px"><div style="display:flex;justify-content:space-between">المجموع<span class="num">50,000.00</span></div><div style="display:flex;justify-content:space-between">الضريبة<span class="num">7,500.00</span></div><div style="display:flex;justify-content:space-between;font-weight:700;border-top:2px solid #000;margin-top:6px;padding-top:6px">الإجمالي (ر.س)<span class="num">57,500.00</span></div></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<nav class="bottom-bar" aria-label="اختصارات">
+  <a class="on" href="#tokens"><svg class="i"><use href="#i-home"/></svg>الرئيسية</a>
+  <a href="#editor"><svg class="i"><use href="#i-file"/></svg>فاتورة</a>
+  <a href="#pos"><svg class="i"><use href="#i-receipt"/></svg>مصروف</a>
+  <a href="#stats"><svg class="i"><use href="#i-chart"/></svg>التقارير</a>
+</nav>
+
+<script>
+const fmt = n => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const toLatin = s => String(s).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/,/g,'');
+
+// swatches
+const colors = {"bg": "#f7f3ec", "surface": "#fffdf9", "surface-2": "#efe8dc", "border": "#e2d8c8", "border-input": "#8a7b66", "text": "#2b241c", "text-muted": "#6b5d4c", "accent": "#4f6b3a", "accent-hover": "#425a30", "accent-soft": "#e6ecdc", "on-accent": "#ffffff", "focus": "#b0672b", "danger": "#a8362a", "danger-soft": "#f6e2dd", "success": "#2f6b3f", "success-soft": "#e1eedf", "warning": "#8a5a00", "warning-soft": "#f8ecd2", "info": "#2d5f7a", "info-soft": "#e0ecf2", "sidebar": "#2f2a24", "on-sidebar": "#f3ece0", "on-sidebar-muted": "#c3b7a5"};
+document.getElementById('swatches').innerHTML = Object.entries(colors).map(([k,v])=>`<div><b style="background:${v}"></b><span>${k}<br><span class="num muted">${v}</span></span></div>`).join('');
+
+// invoice editor
+let lines = [{d:'كرفان مكتبي 6×3 م',q:1,p:50000,t:15},{d:'تركيب ونقل للموقع',q:1,p:3500,t:15}];
+function render(){
+  const tb=document.querySelector('#lines tbody'); let sub=0,vat=0;
+  tb.innerHTML=lines.map((l,i)=>{const net=Math.round(l.q*l.p*100)/100, v=Math.round(net*l.t)/100; sub+=net; vat+=v;
+    return `<tr><td class="num muted">${i+1}</td><td><input class="input" value="${l.d}" oninput="lines[${i}].d=this.value" aria-label="الوصف"></td>
+    <td><input class="input num" inputmode="decimal" value="${l.q}" oninput="lines[${i}].q=+toLatin(this.value)||0;totals()" aria-label="الكمية"></td>
+    <td><input class="input num" inputmode="decimal" value="${l.p}" oninput="lines[${i}].p=+toLatin(this.value)||0;totals()" aria-label="السعر"></td>
+    <td><select class="input" onchange="lines[${i}].t=+this.value;totals()" aria-label="الضريبة"><option value="15"${l.t==15?' selected':''}>15%</option><option value="0"${l.t==0?' selected':''}>صفري</option></select></td>
+    <td class="amt num" id="ln${i}">${fmt(net+v)}</td><td><button class="btn ghost icon sm" aria-label="حذف السطر" onclick="lines.splice(${i},1);render()"><svg class="i"><use href="#i-trash"/></svg></button></td></tr>`}).join('');
+  totals();
+}
+function totals(){ let sub=0,vat=0; lines.forEach((l,i)=>{const net=Math.round(l.q*l.p*100)/100, v=Math.round(net*l.t)/100; sub+=net; vat+=v; const c=document.getElementById('ln'+i); if(c) c.textContent=fmt(net+v);});
+  tSub.textContent=fmt(sub); tVat.textContent=fmt(vat); tTot.textContent=fmt(sub+vat)+' ر.س'; }
+function addLine(){ lines.push({d:'',q:1,p:0,t:15}); render(); document.querySelectorAll('#lines tbody tr:last-child input')[0].focus(); }
+render();
+
+// POS
+const prods=[['مسامير 10مم','12.50'],['زاوية حديد 4م','85.00'],['لوح ساندوتش','240.00'],['دهان أساس','65.00'],['مفصلة باب','18.00'],['قفل كرفان','45.00'],['شريط عزل','9.75'],['برغي تثبيت','3.25']];
+let cart={};
+tiles.innerHTML=prods.map(([n,p],i)=>`<button class="tile" onclick="add(${i})"><span>${n}</span><b class="num">${p}</b></button>`).join('');
+function add(i){ cart[i]=(cart[i]||0)+1; drawCart(); }
+function drawCart(){ let t=0; document.getElementById('cart').innerHTML=Object.entries(cart).map(([i,q])=>{const p=+prods[i][1]*1.15; t+=p*q; return `<div class="line"><span>${prods[i][0]} × <span class="num">${q}</span></span><span class="num">${fmt(p*q)}</span></div>`}).join('')||'<p class="muted xs">امسح صنفاً للبدء</p>'; cTot.textContent=fmt(t); }
+drawCart();
+
+// decorative QR
+let s=7; qr.innerHTML=Array.from({length:121},(_,k)=>{const r=Math.floor(k/11),c=k%11; const corner=(r<3&&c<3)||(r<3&&c>7)||(r>7&&c<3); s=(s*9301+49297)%233280; return `<i style="opacity:${corner||s/233280>.5?1:0}"></i>`}).join('');
+
+function toggleDir(){ const h=document.documentElement; const rtl=h.dir==='rtl'; h.dir=rtl?'ltr':'rtl'; h.lang=rtl?'en':'ar'; dirBtn.textContent=rtl?'ع':'EN'; }
+</script>
+</body>
+</html>
