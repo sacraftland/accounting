@@ -183,6 +183,9 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/PAYROLL_POSTED/i, 'رواتب هذا الشهر مرحّلة ولا يمكن تعديلها'], [/PAYROLL_EMPTY/i, 'لا يوجد موظفون نشطون في هذا الشهر'],
+  [/PAYROLL_NOT_POSTED/i, 'رحّل مسير الرواتب أولاً، أو أنه صُرف مسبقاً'], [/PAYSLIP_NEGATIVE/i, 'الخصومات أكبر من الراتب'],
+  [/EMP_SALARY/i, 'مبالغ الراتب لا يمكن أن تكون سالبة'],
   [/PERM_ESCALATION/i, 'لا يمكنك منح صلاحيات لا تملكها أنت'],
   [/SYSTEM_ROLE/i, 'هذا دور أساسي — المالك فقط يعدّله، ولا يُحذف'],
   [/ROLE_IN_USE/i, 'هذا الدور مستخدم — انقل أعضاءه لدور آخر أولاً'],
@@ -280,6 +283,9 @@ const SupabaseAPI = (cfg) => {
     async resetPassword(email) { ok(await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: appUrl() })); },
     async updatePassword(pw) { if (pw.length < 8) throw new AppError('كلمة المرور 8 أحرف على الأقل'); ok(await sb.auth.updateUser({ password: pw })); },
     async resendConfirm(email) { ok(await sb.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: appUrl() } })); },
+    async googleEnabled() { if (this._g !== undefined) return this._g;
+      try { const r = await fetch(cfg.url.replace(/\/$/, '') + '/auth/v1/settings', { headers: { apikey: cfg.key } }); const j = await r.json(); this._g = !!j?.external?.google; }
+      catch { this._g = true; } return this._g; },
     async signInWithGoogle() { ok(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: appUrl(), queryParams: { prompt: 'select_account' } } })); },
     async signOut() { orgCache = null; await sb.auth.signOut(); },
     async currentOrg() { return orgCache = await loadOrg(); },
@@ -418,6 +424,26 @@ const SupabaseAPI = (cfg) => {
       if (lines.length) ok(await sb.from('bom_lines').insert(lines.map((l, i) => ({ bom_id: row.id, org_id: o, line_no: i + 1, item_id: l.item_id, qty: l.qty, waste_pct: l.waste_pct || 0 }))));
       return row.id; },
     async deleteBom(id) { ok(await sb.from('boms').delete().eq('id', id)); },
+    // ---- reports ----
+    async accountBalances(from, to) { return ok(await sb.rpc('account_balances', { p_org: await orgId(), p_from: from, p_to: to })).map(r => ({ ...r, opening: Number(r.opening), debit: Number(r.debit), credit: Number(r.credit), closing: Number(r.closing) })); },
+    async monthlySummary(n = 6) { return ok(await sb.rpc('monthly_summary', { p_org: await orgId(), p_months: n })).map(r => ({ month: r.month, revenue: Number(r.revenue), cogs: Number(r.cogs), expenses: Number(r.expenses), cash_in: Number(r.cash_in), cash_out: Number(r.cash_out) })); },
+    async vatReturn(from, to) { return ok(await sb.rpc('vat_return', { p_org: await orgId(), p_from: from, p_to: to })); },
+    async openDocuments(kinds) { return ok(await sb.from('documents').select('id,kind,number,issue_date,due_date,total,amount_paid,party_id,parties(name)').eq('org_id', await orgId()).in('kind', kinds).eq('status', 'posted').neq('payment_status', 'paid').order('issue_date'))
+      .map(d => ({ ...d, open: Number(d.total) - Number(d.amount_paid), party_name: d.parties?.name || 'عميل نقدي' })); },
+    // ---- HR & payroll ----
+    async listEmployees() { return ok(await sb.from('employees').select('*').eq('org_id', await orgId()).order('full_name')); },
+    async saveEmployee(e) { const o = await orgId(); const row = { ...e, org_id: o };
+      return e.id ? ok(await sb.from('employees').update(row).eq('id', e.id).select().single()) : ok(await sb.from('employees').insert(row).select().single()); },
+    async listPayrollRuns() { return ok(await sb.from('payroll_runs').select('*').eq('org_id', await orgId()).order('period_month', { ascending: false })); },
+    async getPayrollRun(id) { const r = ok(await sb.from('payroll_runs').select('*').eq('id', id).single());
+      r.payslips = ok(await sb.from('payslips').select('*, employees(full_name,is_saudi,job_title,iban,hire_date,basic_salary,housing_allowance,transport_allowance,other_allowances)').eq('run_id', id));
+      r.payslips.sort((a, b) => (a.employees?.full_name || '').localeCompare(b.employees?.full_name || '', 'ar')); return r; },
+    async preparePayroll(month) { return ok(await sb.rpc('prepare_payroll', { p_org: await orgId(), p_month: month })); },
+    async updatePayslip(id, additions, deductions, note) { ok(await sb.rpc('update_payslip', { p_id: id, p_additions: additions, p_deductions: deductions, p_note: note || null })); },
+    async setPayrollOptions(id, includeEosb, submit) { ok(await sb.rpc('set_payroll_options', { p_run: id, p_include_eosb: includeEosb, p_submit: !!submit })); },
+    async deletePayroll(id) { ok(await sb.rpc('delete_payroll', { p_run: id })); },
+    async postPayroll(id) { return ok(await sb.rpc('post_payroll', { p_run: id })); },
+    async payPayroll(id, account, date) { return ok(await sb.rpc('pay_payroll', { p_run: id, p_account: account, p_date: date })); },
     async listMfg() { return ok(await sb.from('mfg_orders').select('*, items(name_ar,unit), parties(name)').eq('org_id', await orgId()).order('order_date', { ascending: false }).order('created_at', { ascending: false }))
       .map(m => ({ ...m, qty: Number(m.qty), unit_cost: m.unit_cost == null ? null : Number(m.unit_cost) })); },
     async getMfg(id) { const m = ok(await sb.from('mfg_orders').select('*, items(name_ar,unit), parties(name)').eq('id', id).single());

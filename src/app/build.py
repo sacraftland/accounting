@@ -27,7 +27,7 @@ html = f'''<!DOCTYPE html>
 {(here / 'qr.js').read_text()}
 const CHART = {json.dumps(chart, ensure_ascii=False)};
 {(here / 'data.js').read_text()}
-{(here / 'app.js').read_text().replace('// @@OPS@@', (here / 'ops.js').read_text(), 1)}
+{(here / 'app.js').read_text().replace('// @@OPS@@', (here / 'ops.js').read_text() + '\n' + (here / 'reports.js').read_text(), 1)}
 </script>
 </body>
 </html>

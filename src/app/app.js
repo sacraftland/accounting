@@ -92,7 +92,8 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['g', '', 'المخزون والتصنيع', 'inventory|manufacturing'], ['items', 'box', 'الأصناف والخدمات', 'sales|purchases|inventory|manufacturing', 1], ['warehouses', 'box', 'المستودعات والأرصدة', 'inventory'], ['stock', 'box', 'حركات المخزون', 'inventory'],
   ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
   ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
-  ['reports', 'chart', 'التقارير المالية', 'reports', 1, 1], ['payroll', 'users', 'الرواتب', 'hr', 1, 1],
+  ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
+  ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'],
   ['g', '', '', null], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
@@ -161,6 +162,7 @@ function authView(mode) {
     </form>`);
   authNotice = null;
   const err = $('#aerr');
+  if ($('#google') && api.googleEnabled) api.googleEnabled().then(on => { if (!on) { $('#google')?.remove(); $('.or')?.remove(); } });
   if ($('#google')) $('#google').onclick = async e => { err.textContent = ''; busy(e.currentTarget, true); try { await api.signInWithGoogle(); } catch (x) { err.textContent = x.message; busy(e.currentTarget, false); } };
   if ($('#magic')) $('#magic').onclick = async e => { const email = $('#f-email').value.trim(); err.textContent = '';
     if (!emailOk(email)) { err.textContent = 'اكتب بريدك الإلكتروني أولاً ثم اضغط الزر'; $('#f-email').focus(); return; }
@@ -238,20 +240,21 @@ function onboardingView() {
 // ---------- dashboard ----------
 async function dashboardView() {
   shell('dashboard', loading());
-  const [docs, tb] = await Promise.all([api.listDocuments(['tax_invoice', 'simplified_invoice']), api.trialBalance()]);
+  const [docs, tb, cns] = await Promise.all([api.listDocuments(['tax_invoice', 'simplified_invoice']), api.trialBalance(), api.mode === 'supabase' && can('sales') ? api.listDocuments(['credit_note']) : []]);
   const month = riyadhToday().slice(0, 7), posted = docs.filter(d => d.status === 'posted');
   const mDocs = posted.filter(d => d.issue_date.startsWith(month));
-  const sales = mDocs.reduce((a, d) => a + d.subtotal, 0), vat = mDocs.reduce((a, d) => a + d.vat_total, 0);
+  const mCn = cns.filter(d => d.status === 'posted' && d.issue_date.startsWith(month));
+  const sales = mDocs.reduce((a, d) => a + d.subtotal, 0) - mCn.reduce((a, d) => a + d.subtotal, 0), vat = mDocs.reduce((a, d) => a + d.vat_total, 0) - mCn.reduce((a, d) => a + d.vat_total, 0);
   const open = posted.reduce((a, d) => a + (d.total - d.amount_paid), 0), overdue = posted.filter(d => d.due_date && d.due_date < riyadhToday() && d.payment_status !== 'paid');
-  const pend = await approvalsCard().catch(() => '');
+  const [pend, ins] = await Promise.all([approvalsCard().catch(() => ''), dashInsights().catch(() => '')]);
   const cash = tb.filter(r => ['1101', '1102', '1103'].includes(r.code)).reduce((a, r) => a + Number(r.balance), 0);
   $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
     ${pend}<div class="grid g4" style="margin-bottom:24px">
-      <div class="card stat"><div class="label">مبيعات هذا الشهر <span class="xs">(قبل الضريبة)</span></div><div class="val num">${money(sales)}</div><div class="xs muted">${mDocs.length} فاتورة</div></div>
+      <div class="card stat"><div class="label">مبيعات هذا الشهر <span class="xs">(قبل الضريبة)</span></div><div class="val num">${money(sales)}</div><div class="xs muted">${mDocs.length} فاتورة${mCn.length ? ` · بعد ${mCn.length} إشعار دائن` : ''}</div></div>
       <div class="card stat"><div class="label">ضريبة المخرجات هذا الشهر</div><div class="val num">${money(vat)}</div><div class="xs muted">تُورَّد في الإقرار الضريبي</div></div>
       <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">${money(open)}</div><div class="xs ${overdue.length ? 'down' : 'muted'}">${overdue.length ? overdue.length + ' فاتورة متأخرة' : 'لا يوجد متأخر'}</div></div>
       <div class="card stat"><div class="label">النقدية والبنك</div><div class="val num">${money(cash)}</div><div class="xs muted">الصندوق + البنك + الشبكة</div></div>
-    </div>
+    </div>${ins}
     <h2 style="margin-bottom:12px">آخر الفواتير</h2>
     ${docs.length ? invoiceTable(docs.slice(0, 6)) : empty('receipt', 'لا توجد فواتير بعد', 'ابدأ بإضافة عميل وصنف، ثم أصدر أول فاتورة — يُسجَّل قيدها في الحسابات تلقائياً.', `<div class="row" style="justify-content:center"><a class="btn secondary" href="#/customers">إضافة عميل</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>`)}`;
 }
@@ -622,8 +625,7 @@ const ROUTES = [
   ...OPS_ROUTES,
   [/^#\/purchases$/, () => { location.hash = '#/bills'; }], [/^#\/inventory$/, () => { location.hash = '#/warehouses'; }],
   [/^#\/pos$/, stub('pos', 'نقاط البيع', 'الكاشير والورديات والعمل بدون إنترنت — المرحلة الثانية.')],
-  [/^#\/reports$/, stub('reports', 'التقارير المالية', 'قائمة الدخل والمركز المالي والإقرار الضريبي — المرحلة القادمة.')],
-  [/^#\/payroll$/, stub('payroll', 'الرواتب', 'الموظفون والرواتب والتأمينات ونهاية الخدمة — المرحلة الثالثة.')],
+  ...REPORT_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

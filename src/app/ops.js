@@ -17,7 +17,7 @@ const gate = (key, title, module, fn) => async (...a) => { if (api.mode !== 'sup
 const optList = (rows, val, blank) => (blank ? `<option value="">${esc(blank)}</option>` : '') + rows.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(val ?? '') ? ' selected' : ''}>${esc(t)}</option>`).join('');
 const acctOpts = (accs, val, blank) => optList(accs.map(a => [a.id, `${a.code} — ${a.name_ar}`]), val, blank);
 const payAccts = accs => accs.filter(a => a.is_postable && (['cash', 'bank', 'card_clearing', 'custody'].includes(a.system_key) || (a.type === 'asset' && /^110/.test(a.code))));
-const expAccts = accs => accs.filter(a => a.is_postable && (a.type === 'expense' || a.code === '1501'));
+const expAccts = accs => [...accs.filter(a => a.is_postable && a.type === 'expense' && !['cogs', 'stock_variance'].includes(a.system_key)), ...accs.filter(a => a.code === '1501')];
 const statusBadge = d => d.status === 'draft' ? (d.submitted_at ? badge(['بانتظار الاعتماد', 'b-warn']) : badge(['مسودة', 'b-draft'])) : d.status === 'void' ? badge(['ملغى', 'b-bad']) : badge(['مرحّل', 'b-ok']);
 const confirmBtn = (btn, label = 'اضغط مرة أخرى للتأكيد') => { if (btn.dataset.sure) return true; btn.dataset.sure = 1; btn.textContent = label; setTimeout(() => { delete btn.dataset.sure; }, 4000); return false; };
 const onBusy = async (btns, fn) => { btns.forEach(b => b.disabled = true); try { await fn(); } catch (x) { fail(x); btns.forEach(b => b.disabled = false); throw x; } };
@@ -742,6 +742,7 @@ async function approvalsCard() {
   if (can2('expenses')) (await api.listExpenses()).filter(x => x.status === 'draft' && x.submitted_at).forEach(x => out.push(['#/expenses', 'مصروف', x.description || money(x.amount + x.vat_amount)]));
   if (can2('manufacturing')) (await api.listMfg()).filter(m => m.status === 'draft' && m.submitted_at).forEach(m => out.push(['#/mfg/' + m.id, 'أمر تصنيع', m.items?.name_ar]));
   if (can2('inventory')) (await api.listStockDocs()).filter(s => s.status === 'draft' && s.submitted_at).forEach(s => out.push(['#/stock/' + s.id, SD_KIND[s.kind][0], s.doc_date]));
+  if (can2('hr')) (await api.listPayrollRuns()).filter(r => r.status === 'draft' && r.submitted_at).forEach(r => out.push(['#/payroll/' + r.id, 'مسير رواتب', monthName(r.period_month)]));
   if (!out.length) return '';
   return `<section class="card" style="margin-bottom:24px;border-color:var(--c-warning)"><h2 style="margin-bottom:8px">بانتظار اعتمادك <span class="badge b-warn num">${out.length}</span></h2>
     <ul style="margin:0;padding-inline-start:18px">${out.slice(0, 8).map(([h, t, s]) => `<li><a href="${esc(h)}">${esc(t)}</a> — ${esc(s || '')}</li>`).join('')}</ul></section>`;
