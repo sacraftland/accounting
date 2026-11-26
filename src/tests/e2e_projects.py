@@ -149,6 +149,12 @@ with sync_playwright() as p:
     pg.locator(f'a[href*="#/mfg/new?cc={p3}"]').first.click(); pg.wait_for_timeout(2000); settle()
     check('mfg order prefilled (product, qty 3, project)', pg.input_value('#f-qty') == '3' and pg.input_value('#f-cost_center_id') == p3, pg.url)
 
+    go('#/projects'); pg.click('#newp'); pg.wait_for_timeout(400); pg.click('.drawer .ptype:has(input[value=production])'); pg.wait_for_timeout(200)
+    pg.select_option('.drawer #f-product_item_id', '__new'); pg.wait_for_timeout(200)
+    check('new-product fields appear', pg.locator('.drawer #pf-newprod').is_visible())
+    pg.fill('.drawer #f-new_product', 'كرفان سحب 2.4 × 5.7'); pg.fill('.drawer #f-new_price', '38000'); pg.fill('.drawer #f-name', 'تصنيع كرفان سحب'); pg.fill('.drawer #f-production_qty', '2'); submit(2200)
+    check('production project with a product created on the spot', one("select count(*) from cost_centers c join items i on i.id=c.product_item_id where i.name_ar='كرفان سحب 2.4 × 5.7' and i.kind='product' and i.sale_price=3800000 and c.production_qty=2") == '1', err())
+
     # ---------- internal cost center ----------
     go('#/projects'); pg.click('#newp'); pg.wait_for_timeout(400); pg.click('.drawer .ptype:has(input[value=internal])'); pg.wait_for_timeout(200)
     check('internal code suggestion', pg.input_value('.drawer #f-code') == 'CC-001')

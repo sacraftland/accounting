@@ -3780,8 +3780,9 @@ function newProjectDrawer(ccs, ps, items, preset) {
     <div class="form-grid">${field('code', 'رمز المشروع', { req: true, value: nextCode(ccs, mode0 === 'internal' ? 'CC' : 'P'), attrs: 'dir="ltr" maxlength="20"' })}${field('name', 'اسم المشروع', { req: true, help: 'مثل: كرفان 8 متر — مؤسسة البر' })}</div>
     <div id="pf-customer"><div class="field"><label for="f-party_id">العميل</label><select class="input" id="f-party_id" name="party_id">${optList(ps.map(p => [p.id, p.name]), '', '— بدون —')}</select></div>
       ${field('contract_value', 'قيمة العقد قبل الضريبة', { type: 'money' })}</div>
-    <div id="pf-production" class="form-grid"><div class="field"><label for="f-product_item_id">المنتج</label><select class="input" id="f-product_item_id" name="product_item_id">${optList(products.map(i => [i.id, i.name_ar]), '', '— اختر —')}</select></div>
+    <div id="pf-production"><div class="form-grid"><div class="field"><label for="f-product_item_id">المنتج</label><select class="input" id="f-product_item_id" name="product_item_id">${optList([...products.map(i => [i.id, i.name_ar]), ['__new', '+ منتج جديد…']], products.length ? '' : '__new', products.length ? '— اختر —' : undefined)}</select></div>
       ${field('production_qty', 'الكمية المطلوب إنتاجها', { value: '1', attrs: 'inputmode="decimal"' })}</div>
+      <div id="pf-newprod" class="form-grid">${field('new_product', 'اسم المنتج الجديد', { help: products.length ? 'يُضاف للأصناف كسلعة مخزنية' : 'لا توجد منتجات بعد — اكتب اسم المنتج ويُضاف للأصناف تلقائياً' })}${field('new_price', 'سعر البيع قبل الضريبة (اختياري)', { type: 'money' })}</div></div>
     <div id="pf-dates" class="form-grid">${field('start_date', 'تاريخ البداية', { type: 'date', value: riyadhToday() })}${field('due_date', 'تاريخ التسليم المتوقع', { type: 'date' })}</div>
     <div id="pf-desc">${field('description', 'وصف / مواصفات مختصرة', {})}</div>`,
     async v => { const mode = v.mode;
@@ -3791,7 +3792,10 @@ function newProjectDrawer(ccs, ps, items, preset) {
       if (mode === 'copy') { if (!v.src) throw new AppError('اختر القالب أو المشروع'); id = await api.copyProject(v.src, v.code.trim(), v.name.trim(), v.party_id || null, v.start_date || null, false); }
       else { if (v.due_date && v.start_date && v.due_date < v.start_date) throw new AppError('تاريخ التسليم قبل تاريخ البداية');
         const cv = mode === 'customer' && v.contract_value ? toHalalas(v.contract_value) : null; if (cv != null && !(cv >= 0)) throw new AppError('قيمة العقد غير صحيحة');
-        const pq = mode === 'production' ? num(v.production_qty) : null; if (mode === 'production' && (!v.product_item_id || !(pq > 0))) throw new AppError('اختر المنتج والكمية');
+        const pq = mode === 'production' ? num(v.production_qty) : null;
+        if (mode === 'production' && v.product_item_id === '__new') { if (!v.new_product?.trim()) throw new AppError('اكتب اسم المنتج الجديد'); const pr = v.new_price ? toHalalas(v.new_price) : 0; if (!(pr >= 0)) throw new AppError('سعر غير صحيح');
+          v.product_item_id = (await api.saveItem({ kind: 'product', name_ar: v.new_product.trim(), unit: 'unit', sale_price: pr, tax_category: 'S', vat_rate: 15, track_stock: true })).id; }
+        if (mode === 'production' && (!v.product_item_id || !(pq > 0))) throw new AppError('اختر المنتج والكمية');
         id = (await api.saveCostCenter({ code: v.code.trim(), name: v.name.trim(), project_type: mode, party_id: mode === 'customer' ? v.party_id || null : null, contract_value: cv,
           product_item_id: mode === 'production' ? v.product_item_id : null, production_qty: pq, start_date: mode === 'internal' ? null : v.start_date || null, due_date: mode === 'internal' ? null : v.due_date || null, description: v.description || null, status: 'active' })).id;
         if (mode === 'production') { const b = (await api.listBoms()).find(x => x.item_id === v.product_item_id);
@@ -3800,11 +3804,11 @@ function newProjectDrawer(ccs, ps, items, preset) {
   const sync = () => { const mode = $('[name=mode]:checked', f).value;
     $$('.ptype', f).forEach(l => l.classList.toggle('on', $('input', l).checked));
     $('#pf-copy', f).hidden = mode !== 'copy'; $('#pf-customer', f).hidden = !['customer', 'copy'].includes(mode); $('#f-contract_value', f).closest('.field').hidden = mode !== 'customer';
-    $('#pf-production', f).hidden = mode !== 'production'; $('#pf-dates', f).hidden = mode === 'internal'; $('#pf-desc', f).hidden = mode === 'copy';
+    $('#pf-production', f).hidden = mode !== 'production'; $('#pf-newprod', f).hidden = mode !== 'production' || $('#f-product_item_id', f).value !== '__new'; $('#pf-dates', f).hidden = mode === 'internal'; $('#pf-desc', f).hidden = mode === 'copy';
     const code = $('#f-code', f); if (/^(P|CC)-\d{3}$/.test(code.value)) code.value = nextCode(ccs, mode === 'internal' ? 'CC' : 'P');
     if (mode === 'copy' && $('#f-src', f) && !$('#f-name', f).value) { const s = srcs.find(c => c.id === $('#f-src', f).value); if (s) $('#f-name', f).value = s.name.replace(/^قالب:\s*/, '') + ' — '; } };
   $$('[name=mode]', f).forEach(r => r.onchange = sync); if ($('#f-src', f)) $('#f-src', f).onchange = () => { $('#f-name', f).value = ''; sync(); };
-  if ($('#f-product_item_id', f)) $('#f-product_item_id', f).onchange = e => { if (!$('#f-name', f).value) $('#f-name', f).value = 'إنتاج ' + (products.find(i => i.id === e.target.value)?.name_ar || ''); };
+  if ($('#f-product_item_id', f)) $('#f-product_item_id', f).onchange = e => { sync(); if (e.target.value !== '__new' && !$('#f-name', f).value) $('#f-name', f).value = 'إنتاج ' + (products.find(i => i.id === e.target.value)?.name_ar || ''); };
   sync();
 }
 
