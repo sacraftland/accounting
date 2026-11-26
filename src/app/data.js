@@ -430,6 +430,12 @@ const SupabaseAPI = (cfg) => {
     async vatReturn(from, to) { return ok(await sb.rpc('vat_return', { p_org: await orgId(), p_from: from, p_to: to })); },
     async openDocuments(kinds) { return ok(await sb.from('documents').select('id,kind,number,issue_date,due_date,total,amount_paid,party_id,parties(name)').eq('org_id', await orgId()).in('kind', kinds).eq('status', 'posted').neq('payment_status', 'paid').order('issue_date'))
       .map(d => ({ ...d, open: Number(d.total) - Number(d.amount_paid), party_name: d.parties?.name || 'عميل نقدي' })); },
+    async projectPl(from, to) { return ok(await sb.rpc('project_pl', { p_org: await orgId(), p_from: from, p_to: to })).map(r => ({ id: r.cost_center_id, revenue: Number(r.revenue), cogs: Number(r.cogs), expenses: Number(r.expenses) })); },
+    async projectDocs(cc) { const o = await orgId();
+      const [docs, xs, ms] = await Promise.all([sb.from('documents').select('id,kind,number,issue_date,total,status,payment_status,amount_paid,parties(name)').eq('org_id', o).eq('cost_center_id', cc).order('issue_date', { ascending: false }),
+        sb.from('expenses').select('id,number,expense_date,amount,vat_amount,description,status').eq('org_id', o).eq('cost_center_id', cc).order('expense_date', { ascending: false }),
+        sb.from('mfg_orders').select('id,number,order_date,qty,total_cost,status,items(name_ar)').eq('org_id', o).eq('cost_center_id', cc).order('order_date', { ascending: false })]);
+      return { docs: ok(docs), expenses: ok(xs), mfg: ok(ms) }; },
     // ---- HR & payroll ----
     async listEmployees() { return ok(await sb.from('employees').select('*').eq('org_id', await orgId()).order('full_name')); },
     async saveEmployee(e) { const o = await orgId(); const row = { ...e, org_id: o };

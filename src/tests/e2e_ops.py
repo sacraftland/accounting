@@ -135,7 +135,7 @@ with sync_playwright() as p:
     for k, v in [('city', 'الرياض'), ('district', 'السلي'), ('street', 'طريق الخرج'), ('building_no', '7788'), ('postal_code', '14322')]: pg.fill(f'.drawer #f-{k}', v)
     drawer_submit(pg)
     check('customer saved', one("select count(*) from parties where kind='customer'") == '1', [toast_bad(pg), pg.locator('.drawer').all_inner_texts()[:1], errs[:2]])
-    go(pg, '#/quotes/new', 1000); pg.select_option('#f-party', label='مؤسسة البر للرحلات')
+    go(pg, '#/quotes/new', 1000); pg.wait_for_selector('#f-party option:has-text("مؤسسة البر")', state='attached', timeout=15000); pg.select_option('#f-party', label='مؤسسة البر للرحلات')
     pg.select_option('#lines tr:nth-child(1) [data-k=item_id]', label='درج مطبخ خارجي · KIT-DR'); pg.fill('#lines tr:nth-child(1) [data-k=qty]', '2')
     pg.click('#docf [type=submit]'); pg.wait_for_timeout(1500)
     check('quote issued QUO-', (one("select number from documents where kind='quote'") or '').startswith('QUO-'), toast_bad(pg))
@@ -254,9 +254,37 @@ with sync_playwright() as p:
     pg.click('#payp'); pg.click('#payok'); pg.wait_for_timeout(1800)
     check('salaries paid', one("select status from payroll_runs") == 'paid', toast_bad(pg))
     check('ledger still balanced after payroll', one("select sum(debit) = sum(credit) from journal_lines") == 't')
+    # ---------- projects ----------
+    go(pg, '#/projects', 1000); pg.click('#newcc2'); pg.fill('.drawer #f-name', 'كرفان 8 متر — مؤسسة البر'); pg.fill('.drawer #f-contract_value', '40000'); drawer_submit(pg)
+    check('project saved', one("select code||':'||contract_value from cost_centers") == 'P-001:4000000', toast_bad(pg))
+    go(pg, '#/expenses', 1000); pg.click('#newx'); pg.select_option('.drawer #f-account_id', index=2); pg.fill('.drawer #f-description', 'نقل الكرفان')
+    pg.fill('.drawer #f-amount', '500'); pg.select_option('.drawer #f-cost_center_id', index=1); drawer_submit(pg); pg.wait_for_timeout(1500)
+    check('expense tagged with project', one("select count(*) from journal_lines where cost_center_id is not null") != '0', toast_bad(pg))
+    cc = one("select id from cost_centers")
+    go(pg, f'#/projects/{cc}', 1500); t = pg.inner_text('#main')
+    check('project page shows its cost', '500.00' in t and 'نقل الكرفان' in t, t[:300])
+    pg.screenshot(path=str(SHOTS / 'S65-project.png'), full_page=True)
+
+    # ---------- POS ----------
+    go(pg, '#/pos', 1500)
+    pg.click('.pos-tile:has-text("درج مطبخ خارجي")'); pg.click('.pos-tile:has-text("درج مطبخ خارجي")')
+    check('POS: 2 drawers in the cart = 5,750', '5,750.00' in pg.inner_text('#pT'), pg.inner_text('#pT'))
+    pg.fill('#f-paid', '6000'); pg.wait_for_timeout(200)
+    check('POS: change shown', '250.00' in pg.inner_text('#change'))
+    pg.screenshot(path=str(SHOTS / 'S66-pos.png'), full_page=True)
+    pg.click('#paycash'); pg.wait_for_timeout(2500)
+    check('POS: receipt shown with QR', pg.locator('.receipt80 svg').count() == 1 and 'فاتورة ضريبية مبسطة' in pg.inner_text('.receipt80'), toast_bad(pg) or txt(pg, '#poserr'))
+    pg.screenshot(path=str(SHOTS / 'S67-pos-receipt.png'))
+    check('POS: simplified invoice posted & paid in cash', one("select payment_status from documents where kind='simplified_invoice' and note='نقطة البيع'") == 'paid'
+          and one("select method from payments where reference like 'INV-%' order by created_at desc limit 1") == 'cash')
+    pg.click('#rnew'); pg.fill('#posq', 'SRV-I'); pg.press('#posq', 'Enter'); pg.wait_for_timeout(200)
+    check('POS: code + Enter adds the item (barcode scanner)', pg.locator('.pos-line').count() == 1)
+    pg.click('#paycard'); pg.wait_for_timeout(2500)
+    check('POS: card sale goes to card clearing', one("select method from payments order by created_at desc limit 1") == 'card', toast_bad(pg) or txt(pg, '#poserr'))
+    pg.click('#rnew')
     # mobile check on new screens
     pg.set_viewport_size({'width': 390, 'height': 800})
-    for h in ['#/bills', '#/mfg', '#/warehouses', '#/expenses', '#/users', '#/reports/pl', '#/reports/vat', '#/payroll', '#/dashboard']:
+    for h in ['#/bills', '#/mfg', '#/warehouses', '#/expenses', '#/users', '#/reports/pl', '#/reports/vat', '#/payroll', '#/dashboard', '#/pos', '#/projects']:
         go(pg, h, 900); w = pg.evaluate('document.documentElement.scrollWidth')
         check(f'mobile {h} fits 390px', w <= 392, w)
     check('owner: no page errors', not errs, errs[:3])

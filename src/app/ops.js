@@ -13,11 +13,12 @@ const can = (m, a = 'view') => { const p = ORG?.perms; if (api.mode !== 'supabas
 const fq = n => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 4 });
 const serverOnly = (key, title) => { shell(key, `<div class="page-head"><h1>${esc(title)}</h1></div>${empty('lock', 'تعمل هذه الوحدة عند الربط بالخادم', 'وضع التجربة يغطي الفواتير والسندات فقط. اربط النظام بـ Supabase من الإعدادات.')}`); };
 const denied = (key, title) => { shell(key, `<div class="page-head"><h1>${esc(title)}</h1></div>${empty('lock', 'ليست لديك صلاحية', 'اطلب من مدير النظام إضافة هذه الصلاحية لدورك.')}`); };
-const gate = (key, title, module, fn) => async (...a) => { if (api.mode !== 'supabase') return serverOnly(key, title); if (!can(module)) return denied(key, title); return fn(...a); };
+const gate = (key, title, module, fn) => async (...a) => { if (api.mode !== 'supabase') return serverOnly(key, title); if (!module.split('|').some(m => can(m))) return denied(key, title); return fn(...a); };
 const optList = (rows, val, blank) => (blank ? `<option value="">${esc(blank)}</option>` : '') + rows.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(val ?? '') ? ' selected' : ''}>${esc(t)}</option>`).join('');
 const acctOpts = (accs, val, blank) => optList(accs.map(a => [a.id, `${a.code} — ${a.name_ar}`]), val, blank);
 const payAccts = accs => accs.filter(a => a.is_postable && (['cash', 'bank', 'card_clearing', 'custody'].includes(a.system_key) || (a.type === 'asset' && /^110/.test(a.code))));
 const expAccts = accs => [...accs.filter(a => a.is_postable && a.type === 'expense' && !['cogs', 'stock_variance'].includes(a.system_key)), ...accs.filter(a => a.code === '1501')];
+const ccField = (ccs, val, label = 'المشروع / مركز التكلفة') => ccs?.filter(c => c.status !== 'closed' || c.id === val).length ? `<div class="field"><label for="f-cost_center_id">${label}</label><select class="input" id="f-cost_center_id" name="cost_center_id">${optList(ccs.filter(c => c.status !== 'closed' || c.id === val).map(c => [c.id, `${c.code} — ${c.name}`]), val, '— بدون —')}</select></div>` : '';
 const statusBadge = d => d.status === 'draft' ? (d.submitted_at ? badge(['بانتظار الاعتماد', 'b-warn']) : badge(['مسودة', 'b-draft'])) : d.status === 'void' ? badge(['ملغى', 'b-bad']) : badge(['مرحّل', 'b-ok']);
 const confirmBtn = (btn, label = 'اضغط مرة أخرى للتأكيد') => { if (btn.dataset.sure) return true; btn.dataset.sure = 1; btn.textContent = label; setTimeout(() => { delete btn.dataset.sure; }, 4000); return false; };
 const onBusy = async (btns, fn) => { btns.forEach(b => b.disabled = true); try { await fn(); } catch (x) { fail(x); btns.forEach(b => b.disabled = false); throw x; } };
@@ -65,8 +66,8 @@ async function docListView(key) {
 async function docEditView(key, id) {
   const c = DOCS[key]; shell(key, loading());
   if (!id && c.needsSource) { location.hash = '#/' + key; return; }
-  const [parties, items, whs, accs, existing] = await Promise.all([api.listParties(c.side), api.listItems(), api.listWarehouses(),
-    c.accounts || c.payNow ? api.listAccounts() : [], id ? api.getDocument(id) : null]);
+  const [parties, items, whs, accs, existing, ccs] = await Promise.all([api.listParties(c.side), api.listItems(), api.listWarehouses(),
+    c.accounts || c.payNow ? api.listAccounts() : [], id ? api.getDocument(id) : null, api.listCostCenters()]);
   if (existing && existing.status !== 'draft') { location.hash = '#/' + key + '/' + id; return; }
   if (!can(c.module, 'create')) { location.hash = '#/' + key + (id ? '/' + id : ''); return; }
   const landed = existing && c.landed ? await api.listLanded(existing.id) : [];
@@ -89,6 +90,7 @@ async function docEditView(key, id) {
           ${existing?.source ? '' : `<a href="#" class="xs" id="qparty">+ ${c.side === 'supplier' ? 'مورد' : 'عميل'} جديد</a>`}</div>
         ${field('issue_date', 'التاريخ', { type: 'date', value: doc.issue_date, req: true })}
         ${c.dueLabel ? field('due_date', c.dueLabel, { type: 'date', value: doc.due_date || '' }) : ''}
+        ${ccField(ccs, doc.cost_center_id)}
         ${c.stock && whs.length > 1 ? select('warehouse_id', 'المستودع', whs.map(w => [w.id, w.name]), doc.warehouse_id || whs[0]?.id) : `<input type="hidden" name="warehouse_id" value="${esc(doc.warehouse_id || whs[0]?.id || '')}">`}
       </div>
       <div class="tbl-wrap editor editor-lines"><table><thead><tr><th style="width:32px">#</th><th style="min-width:170px">الصنف</th>${c.accounts ? '<th style="min-width:170px">الحساب <span class="xs muted">(للبنود غير المخزنية)</span></th>' : ''}<th style="min-width:160px">الوصف</th><th style="width:90px">الكمية</th><th style="width:120px">السعر</th><th style="width:100px">الخصم</th><th style="width:120px">الضريبة</th><th class="amt" style="width:120px">الإجمالي</th><th style="width:44px"></th></tr></thead><tbody id="lines"></tbody></table></div>
@@ -152,7 +154,7 @@ async function docEditView(key, id) {
     try {
       const f = Object.fromEntries(new FormData($('#docf')));
       const d = { ...(existing ? { id: existing.id } : {}), kind: f.kind || c.kinds[0][0], party_id: existing?.source ? existing.party_id : (f.party_id || null), issue_date: f.issue_date,
-        issue_time: riyadhTime(), due_date: f.due_date || null, note: f.note, warehouse_id: f.warehouse_id || null, branch_id: existing?.branch_id || null, related_document_id: existing?.related_document_id || null };
+        issue_time: riyadhTime(), due_date: f.due_date || null, note: f.note, warehouse_id: f.warehouse_id || null, branch_id: existing?.branch_id || null, related_document_id: existing?.related_document_id || null, cost_center_id: f.cost_center_id || null };
       const newId = await api.saveDraft(d, real.map(l => ({ ...l, item_id: l.item_id || null, account_id: itemById[l.item_id]?.track_stock ? null : (l.account_id || null), discount: l.discount || 0 })));
       if (c.landed) await api.saveLanded(newId, lc.filter(x => x.amount > 0));
       if (mode === 'submit') { await api.submitForApproval('documents', newId); toast('أُرسل للاعتماد'); }
@@ -572,7 +574,7 @@ async function mfgListView() {
 }
 async function mfgEditView(id, qs) {
   shell('mfg', loading());
-  const [boms, items, whs, accs, ps, ex, bal] = await Promise.all([api.listBoms(), api.listItems(), api.listWarehouses(), api.listAccounts(), api.listParties('customer'), id ? api.getMfg(id) : null, api.stockByWarehouse()]);
+  const [boms, items, whs, accs, ps, ex, bal, ccs] = await Promise.all([api.listBoms(), api.listItems(), api.listWarehouses(), api.listAccounts(), api.listParties('customer'), id ? api.getMfg(id) : null, api.stockByWarehouse(), api.listCostCenters()]);
   if (ex && ex.status !== 'draft') return mfgView(id, ex);
   if (!can('manufacturing', 'create')) { location.hash = '#/mfg' + (id ? '/' + id : ''); return; }
   const quotes = can('sales') ? (await api.listDocuments(['quote'])).filter(d => d.status === 'posted') : [];
@@ -594,6 +596,7 @@ async function mfgEditView(id, qs) {
         ${field('order_date', 'تاريخ الأمر', { type: 'date', value: m.order_date, req: true })}
         ${select('warehouse_id', 'المستودع (تُصرف منه المواد ويدخله المنتج)', whs.map(w => [w.id, w.name]), m.warehouse_id)}
         <div class="field"><label for="f-party">لعميل (اختياري)</label><select class="input" id="f-party" name="party_id">${optList(ps.map(p => [p.id, p.name]), m.party_id, '— للمخزون —')}</select></div>
+        ${ccField(ccs, m.cost_center_id)}
         ${quotes.length ? `<div class="field"><label for="f-rel">عرض السعر المرتبط (اختياري)</label><select class="input" id="f-rel" name="related_document_id">${optList(quotes.map(d => [d.id, `${d.number} — ${d.party_name}`]), m.related_document_id, '—')}</select></div>` : ''}
       </div>
       <h3 style="margin-bottom:8px">المكونات — المخطط والمستهلك فعلاً والهدر</h3>
@@ -645,7 +648,7 @@ async function mfgEditView(id, qs) {
     if (!real.length && !costs.length) return err.textContent = 'أضف مكونات أو تكاليف';
     const btns = $$('#mf button'); btns.forEach(b => b.disabled = true);
     try { const mid = await api.saveMfg({ ...(ex ? { id: ex.id } : {}), item_id: f.item_id, qty: n, order_date: f.order_date, warehouse_id: f.warehouse_id, party_id: f.party_id || null,
-        related_document_id: f.related_document_id || null, notes: f.notes, submitted_at: mode === 'submit' ? new Date().toISOString() : null }, real, costs);
+        related_document_id: f.related_document_id || null, cost_center_id: f.cost_center_id || null, notes: f.notes, submitted_at: mode === 'submit' ? new Date().toISOString() : null }, real, costs);
       if (mode === 'post') { await api.postMfg(mid); toast('تم تنفيذ أمر التصنيع ودخل المنتج المخزون'); location.hash = '#/mfg/' + mid; }
       else { toast(mode === 'submit' ? 'أُرسل للاعتماد' : 'تم حفظ المسودة'); location.hash = '#/mfg'; }
     } catch (x) { err.textContent = x.message; btns.forEach(b => b.disabled = false); } };

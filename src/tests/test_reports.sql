@@ -124,6 +124,18 @@ select pay_payroll(:'run', (select id from accounts where org_id = :'org' and sy
 select t.ok('salaries paid: payable cleared, run paid', t.bal(:'org','salaries_payable') = 0 and (select status from payroll_runs where id = :'run') = 'paid');
 select t.fails('cannot pay twice', format('select pay_payroll(%L, %L)', :'run', (select id from accounts where org_id = :'org' and system_key = 'bank')), 'PAYROLL_NOT_POSTED');
 select t.fails('cannot re-prepare a posted month', format($q$select prepare_payroll(%L, '2026-11-01')$q$, :'org'), 'PAYROLL_POSTED');
+-- ================= projects =================
+insert into cost_centers (org_id, code, name, is_project, contract_value) values (:'org', 'P-01', 'كرفان العميل', true, 5000000) returning id as cc \gset
+insert into documents (org_id, branch_id, warehouse_id, kind, party_id, issue_date, cost_center_id) values (:'org', :'br', :'w1', 'tax_invoice', :'cust', current_date, :'cc') returning id as inv2 \gset
+insert into document_lines (document_id, org_id, line_no, item_id, description, qty, unit_price, tax_category, vat_rate) values (:'inv2', :'org', 1, :'prod', 'x', 2, 100000, 'S', 15);
+select post_sales_invoice(:'inv2');
+insert into expenses (org_id, expense_date, account_id, description, amount, vat_amount, paid_from_account_id, cost_center_id)
+values (:'org', current_date, (select id from accounts where org_id = :'org' and code = '5204'), 'نقل', 10000, 0, (select id from accounts where org_id = :'org' and system_key = 'cash'), :'cc') returning id as ex2 \gset
+select post_expense(:'ex2');
+select t.ok('project P&L: revenue 2,000, COGS 800, expenses 100',
+  (select revenue = 200000 and cogs = 80000 and expenses = 10000 from project_pl(:'org', current_date - 1, current_date + 1) where cost_center_id = :'cc'),
+  (select row(x.*)::text from project_pl(:'org', current_date - 1, current_date + 1) x));
+select t.fails('negative contract value rejected', format($q$update cost_centers set contract_value = -1 where id = %L$q$, :'cc'), 'not allowed');
 select t.ok('books balance', (select sum(debit) = sum(credit) from journal_lines where org_id = :'org'));
 select t.ok('every entry balances', not exists (select 1 from journal_lines where org_id = :'org' group by entry_id having sum(debit) <> sum(credit)));
 reset role;

@@ -84,7 +84,7 @@ const select = (name, label, opts, value = '', extra = '') => `<div class="field
 // ---------- shell ----------
 const NAV = [   // [route, icon, label, module, local-mode too?]
   ['dashboard', 'home', 'الرئيسية', null, 1],
-  ['g', '', 'المبيعات', 'sales'], ['invoices', 'file', 'الفواتير', 'sales', 1], ['quotes', 'file', 'عروض الأسعار', 'sales'], ['credit-notes', 'file', 'الإشعارات الدائنة', 'sales'],
+  ['g', '', 'المبيعات', 'sales'], ['pos', 'pos', 'نقطة البيع', 'sales'], ['invoices', 'file', 'الفواتير', 'sales', 1], ['quotes', 'file', 'عروض الأسعار', 'sales'], ['credit-notes', 'file', 'الإشعارات الدائنة', 'sales'],
   ['receipts', 'receipt', 'سندات القبض', 'sales', 1], ['customers', 'users', 'العملاء', 'sales', 1],
   ['g', '', 'المشتريات', 'purchases'], ['bills', 'cart', 'فواتير المشتريات', 'purchases'], ['purchase-orders', 'cart', 'أوامر الشراء', 'purchases'], ['purchase-returns', 'cart', 'مرتجعات المشتريات', 'purchases'],
   ['payments', 'receipt', 'سندات الصرف', 'purchases'], ['suppliers', 'users', 'الموردون', 'purchases'],
@@ -92,7 +92,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['g', '', 'المخزون والتصنيع', 'inventory|manufacturing'], ['items', 'box', 'الأصناف والخدمات', 'sales|purchases|inventory|manufacturing', 1], ['warehouses', 'box', 'المستودعات والأرصدة', 'inventory'], ['stock', 'box', 'حركات المخزون', 'inventory'],
   ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
   ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
-  ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
+  ['projects', 'chart', 'المشاريع ومراكز التكلفة', 'accounting|manufacturing|reports'], ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'],
   ['g', '', '', null], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
@@ -283,7 +283,8 @@ async function invoicesView() {
 
 async function invoiceEditView(id) {
   shell('invoices', loading());
-  const [parties, items, existing] = await Promise.all([api.listParties('customer'), api.listItems(), id ? api.getDocument(id) : null]);
+  const srv = api.mode === 'supabase';
+  const [parties, items, existing, whs, ccs] = await Promise.all([api.listParties('customer'), api.listItems(), id ? api.getDocument(id) : null, srv ? api.listWarehouses() : [], srv ? api.listCostCenters() : []]);
   if (existing && existing.status !== 'draft') { location.hash = '#/invoices/' + id; return; }
   const doc = existing || { kind: 'tax_invoice', party_id: '', issue_date: riyadhToday(), due_date: '', note: '' };
   let lines = existing ? existing.lines.map(l => ({ item_id: l.item_id || '', description: l.description, qty: Number(l.qty), unit_price: l.unit_price, discount: l.discount || 0, tax_category: l.tax_category, vat_rate: Number(l.vat_rate) }))
@@ -299,6 +300,8 @@ async function invoiceEditView(id) {
           <a href="#" class="xs" id="qparty">+ عميل جديد</a></div>
         ${field('issue_date', 'تاريخ الفاتورة', { type: 'date', value: doc.issue_date, req: true })}
         ${field('due_date', 'تاريخ الاستحقاق', { type: 'date', value: doc.due_date || '' })}
+        ${whs.length > 1 ? select('warehouse_id', 'المستودع', whs.map(w => [w.id, w.name]), doc.warehouse_id || whs[0].id) : ''}
+        ${ccField(ccs, doc.cost_center_id)}
       </div>
       <p class="note bad" id="kindwarn" hidden></p>
       <div class="tbl-wrap editor editor-lines"><table><thead><tr><th style="width:32px">#</th><th style="min-width:180px">الصنف</th><th style="min-width:180px">الوصف</th><th style="width:90px">الكمية</th><th style="width:130px">السعر</th><th style="width:110px">الخصم</th><th style="width:130px">الضريبة</th><th class="amt" style="width:130px">الإجمالي</th><th style="width:44px"></th></tr></thead><tbody id="lines"></tbody></table></div>
@@ -342,7 +345,8 @@ async function invoiceEditView(id) {
   $('#addl').onclick = addLine;
   ['#f-kind', '#f-party'].forEach(s => $(s).addEventListener('change', kindCheck));
   $('#qparty').onclick = e => { e.preventDefault(); partyDrawer(null, async p => { toast('تمت إضافة العميل'); const keep = collect(); await invoiceEditViewKeep(keep, p.id); }); };
-  const collect = () => { const f = Object.fromEntries(new FormData($('#invf'))); return { doc: { ...(existing ? { id: existing.id } : {}), kind: f.kind, party_id: f.party_id || null, issue_date: f.issue_date, issue_time: riyadhTime(), due_date: f.due_date || null, note: f.note, branch_id: existing?.branch_id || null }, lines }; };
+  const collect = () => { const f = Object.fromEntries(new FormData($('#invf'))); return { doc: { ...(existing ? { id: existing.id } : {}), kind: f.kind, party_id: f.party_id || null, issue_date: f.issue_date, issue_time: riyadhTime(), due_date: f.due_date || null, note: f.note, branch_id: existing?.branch_id || null,
+    ...(srv ? { warehouse_id: f.warehouse_id || existing?.warehouse_id || null, cost_center_id: f.cost_center_id || null } : {}) }, lines }; };
   const validate = () => { const err = []; if (!$('#f-issue_date').value) err.push('تاريخ الفاتورة مطلوب');
     const real = lines.filter(l => l.description?.trim() || l.item_id);
     if (!real.length) err.push('أضف سطراً واحداً على الأقل');
@@ -624,7 +628,7 @@ const ROUTES = [
   [/^#\/accounts$/, accountsView], [/^#\/trial-balance$/, trialBalanceView], [/^#\/settings$/, settingsView],
   ...OPS_ROUTES,
   [/^#\/purchases$/, () => { location.hash = '#/bills'; }], [/^#\/inventory$/, () => { location.hash = '#/warehouses'; }],
-  [/^#\/pos$/, stub('pos', 'نقاط البيع', 'الكاشير والورديات والعمل بدون إنترنت — المرحلة الثانية.')],
+  ...POS_ROUTES,
   ...REPORT_ROUTES,
 ];
 async function route() {
