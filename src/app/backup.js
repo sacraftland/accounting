@@ -75,7 +75,7 @@ async function backupView() {
   const ago = at => { const m = Math.round((Date.now() - new Date(at)) / 60000); return m < 1 ? 'الآن' : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
   const lastScript = log.find(l => l.source === 'script'), lastApp = log.find(l => l.source === 'app');
   const stale = !lastScript || Date.now() - new Date(lastScript.at) > 36 * 3600e3;
-  const SRC = { app: 'من التطبيق', script: 'كمبيوتر النسخ', restore: 'استرجاع' };
+  const SRC = { app: 'من التطبيق', script: 'كمبيوتر النسخ', restore: 'استرجاع', reset: 'تصفير' };
   const bkRole = roles.find(r => r.permissions?.backup?.length && Object.keys(r.permissions).length === 1);
   $('#main').innerHTML = `<a class="crumb" href="#/settings">${icon('chev')} الإعدادات</a><div class="page-head"><h1>النسخ الاحتياطي والاسترجاع</h1></div>
     <div class="grid g3" style="margin-bottom:20px">
@@ -107,8 +107,18 @@ async function backupView() {
         <li>كل نسخة ناجحة تظهر هنا في «آخر نسخة من كمبيوتر النسخ». لو تأخرت أكثر من يوم ونصف يظهر تنبيه.</li></ol>
       <p class="help">ننصح بتشفير قرص ذلك الكمبيوتر، وتحديد قرص خارجي كنسخة ثانية أثناء الإعداد.</p></section>
 
+    ${owner && api.mode === 'supabase' ? `<section class="card grid" id="rst" style="gap:12px;margin-bottom:16px;border-color:var(--c-danger)"><h3 style="margin:0;color:var(--c-danger)">تصفير الشركة (إنهاء فترة التجربة)</h3>
+      <p class="muted" style="margin:0">يمسح بيانات التجربة قبل البدء الرسمي. للمالك فقط، ولا يمكن التراجع عنه إلا باسترجاع النسخة الاحتياطية اللي تنزل قبل المسح.</p>
+      <fieldset><legend>ماذا يُمسح؟</legend>
+        <label class="row" style="gap:8px;align-items:flex-start"><input type="radio" name="rstm" value="ops" checked><span><b>العمليات فقط</b> (المستحسن) — تُمسح الفواتير والعروض والسندات والقيود والمصروفات والمخزون وحركاته والمشاريع والتصنيع والرواتب والحضور والإجازات والمهام والعملاء المحتملون، ويرجع الترقيم من 1.<br><span class="muted">يبقى: الإعدادات والشعار وتصميم الفاتورة، شجرة الحسابات، الأصناف، العملاء والموردون، الموظفون، الفروع والمستودعات، قوائم الأسعار، قوائم المواد، قوالب المشاريع، الالتزامات، الميزانيات، دراسات الجدوى، التقارير المحفوظة، المستخدمون والصلاحيات.</span></span></label>
+        <label class="row" style="gap:8px;align-items:flex-start;margin-top:8px"><input type="radio" name="rstm" value="all"><span><b>كل شيء</b> — يرجع النظام مثل أول يوم: شجرة حسابات جديدة وفرع ومستودع رئيسي.<br><span class="muted">يبقى فقط: بيانات الشركة (الاسم والرقم الضريبي والشعار وتصميم الفاتورة) والمستخدمون والصلاحيات.</span></span></label></fieldset>
+      <div class="row" style="gap:8px;align-items:center"><button class="btn secondary" id="rstbk">${icon('down')}1. نزّل نسخة احتياطية أولاً</button><span class="xs muted" id="rstbkm">مطلوبة قبل التصفير</span></div>
+      ${field('rstname', `2. للتأكيد اكتب اسم الشركة: ${ORG.name_ar}`, { attrs: 'autocomplete="off" disabled' })}
+      <p class="help err" id="rsterr" role="alert"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary" id="rstgo" style="background:var(--c-danger);border-color:var(--c-danger)" disabled>3. تصفير الشركة</button></div></section>` : ''}
+
     <section class="card"><h3 style="margin:0 0 8px">السجل</h3>${log.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الوقت</th><th>المصدر</th><th class="amt">السجلات</th><th>ملاحظة</th></tr></thead><tbody>
-      ${log.slice(0, 30).map(l => `<tr><td class="num">${esc(new Date(l.at).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' }).slice(0, 17))}</td><td>${badge([SRC[l.source] || l.source, l.source === 'script' ? 'b-ok' : l.source === 'restore' ? 'b-warn' : 'b-info'])}</td><td class="amt num">${Number(l.rows).toLocaleString('en-US')}</td><td class="xs">${esc(l.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد نسخ بعد.</p>'}</section>`;
+      ${log.slice(0, 30).map(l => `<tr><td class="num">${esc(new Date(l.at).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' }).slice(0, 17))}</td><td>${badge([SRC[l.source] || l.source, l.source === 'script' ? 'b-ok' : l.source === 'restore' || l.source === 'reset' ? 'b-warn' : 'b-info'])}</td><td class="amt num">${Number(l.rows).toLocaleString('en-US')}</td><td class="xs">${esc(l.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد نسخ بعد.</p>'}</section>`;
 
   const msg = t => { $('#bkmsg').textContent = t; };
   $('#bknow').onclick = async e => { e.target.disabled = true; msg('جارٍ تجهيز النسخة…');
@@ -127,6 +137,21 @@ async function backupView() {
       .replace("ORG = '__ORG__'", `ORG = ${JSON.stringify(ORG.id)}`).replace("COMPANY = '__NAME__'", `COMPANY = ${JSON.stringify(ORG.name_ar)}`);
     dlBlob(new Blob([py], { type: 'text/x-python;charset=utf-8' }), 'craftland-backup.py'); };
   if ($('#bkrole')) $('#bkrole').onclick = async () => { try { await api.saveRole(null, 'النسخ الاحتياطي', { backup: ['view'] }); toast('أُنشئ الدور'); backupView(); } catch (x) { fail(x); } };
+
+  if ($('#rst')) {
+    let backed = false;
+    $('#rstbk').onclick = async e => { e.target.disabled = true; $('#rstbkm').textContent = 'جارٍ تجهيز النسخة…';
+      try { const b = await api.exportOrg('app'), text = JSON.stringify(b), z = await gz(text); dlBlob(z || new Blob([text], { type: 'application/json' }), backupName() + '-قبل-التصفير' + (z ? '.json.gz' : '.json'));
+        backed = true; $('#rstbkm').textContent = 'تم تنزيل النسخة ✓ — احتفظ بها'; $('#f-rstname').disabled = false; $('#rstgo').disabled = false; $('#f-rstname').focus(); }
+      catch (x) { $('#rstbkm').textContent = ''; fail(x); } finally { e.target.disabled = false; } };
+    $('#rstgo').onclick = async ev => { const m = $('[name=rstm]:checked')?.value, nm = ($('#f-rstname').value || '').trim(); $('#rsterr').textContent = '';
+      if (!backed) return $('#rsterr').textContent = 'نزّل النسخة الاحتياطية أولاً';
+      if (nm !== ORG.name_ar.trim()) return $('#rsterr').textContent = 'اكتب اسم الشركة كما هو للتأكيد';
+      if (!ev.target.dataset.sure) { ev.target.dataset.sure = 1; ev.target.textContent = m === 'all' ? 'متأكد؟ يُمسح كل شيء — اضغط مرة أخرى' : 'متأكد؟ تُمسح كل العمليات — اضغط مرة أخرى'; return; }
+      ev.target.disabled = true; ev.target.textContent = 'جارٍ التصفير…';
+      try { await api.resetOrg(m, nm); ORG = null; toast(m === 'all' ? 'تم التصفير — النظام الآن مثل أول يوم' : 'تم مسح العمليات — الترقيم يبدأ من 1'); location.hash = '#/dashboard'; route(); }
+      catch (x) { $('#rsterr').textContent = x.message; ev.target.disabled = false; delete ev.target.dataset.sure; ev.target.textContent = '3. تصفير الشركة'; } };
+  }
 
   $('#rsf').onchange = async e => { const f = e.target.files[0]; if (!f) return; const box = $('#rsprev'); box.innerHTML = loading('جارٍ قراءة الملف…');
     let b; try { b = await readBackupFile(f); } catch (x) { box.innerHTML = `<p class="help err">${esc(x.message)}</p>`; return; }

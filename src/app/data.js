@@ -183,6 +183,8 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/RESET_CONFIRM/, 'اكتب اسم الشركة كما هو للتأكيد'],
+  [/RESET_BROKEN/, 'تعذّر التصفير بأمان — لم يُمسح شيء'],
   [/BACKUP_IDS_TAKEN/, 'هذه النسخة استُرجعت من قبل — أعد اختيار الملف ليُجهَّز من جديد'],
   [/BACKUP_INVALID[: ]*(.*)/, m => 'ملف النسخة غير صالح أو معدّل' + (m[1] ? ` (${m[1]})` : '')],
   [/WAGES_MORE_THAN_OWED/i, 'المبلغ أكبر من الأجور المستحقة للعامل'], [/employees_casual_rate/i, 'أدخل الأجر اليومي أو أجر الساعة للعامل'],
@@ -505,6 +507,7 @@ const SupabaseAPI = (cfg) => {
     async saveLead(l) { const row = nulls({ ...l, org_id: await orgId(), updated_at: new Date().toISOString() }); return l.id ? ok(await sb.from('leads').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leads').insert(row).select().single()); },
     async deleteLead(id) { ok(await sb.from('leads').delete().eq('id', id)); },
     async exportOrg(source = 'app') { return ok(await sb.rpc('export_org', { p_org: await orgId(), p_source: source })); },
+    async resetOrg(mode, confirm) { return ok(await sb.rpc('reset_org', { p_org: await orgId(), p_mode: mode, p_confirm: confirm })); },
     async importOrg(data, mode) { return ok(await sb.rpc('import_org', { p_data: data, p_mode: mode, p_target: mode === 'replace' ? await orgId() : null })); },
     async backupLog() { return ok(await sb.from('backup_log').select('*').eq('org_id', await orgId()).order('at', { ascending: false }).limit(60)); },
     async dataset(ds, from, to) { return ok(await sb.rpc('report_dataset', { p_org: await orgId(), p_ds: ds, p_from: from, p_to: to })) || []; },

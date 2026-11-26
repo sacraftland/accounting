@@ -401,7 +401,7 @@ const EXT_ROUTES = [
   [/^#\/opening$/, gate('accounts', 'الأرصدة الافتتاحية', 'accounting', openingView)],
   [/^#\/assets$/, gate('assets', 'الأصول الثابتة', 'accounting', assetsView)],
   [/^#\/custody$/, gate('custody', 'العهد', 'expenses', custodyView)],
-  [/^#\/card-settlement$/, gate('card-settle', 'تسوية الشبكة', 'sales|accounting', cardSettleView)],
+  [/^#\/card-settle(?:ment)?$/, gate('card-settle', 'تسوية الشبكة', 'sales|accounting', cardSettleView)],
   [/^#\/leads$/, gate('leads', 'العملاء المحتملون', 'sales', leadsView)],
   [/^#\/tasks(\?.*)?$/, gate('tasks', 'المهام', 'sales|purchases|expenses|inventory|manufacturing|accounting|reports|hr|settings|users', m => tasksView(new URLSearchParams((m[1] || '').slice(1))))],
   [/^#\/commitments$/, gate('commitments', 'الالتزامات والتجديدات', 'settings|hr|accounting|sales|purchases|inventory|manufacturing|expenses|reports|users', commitmentsView)],
