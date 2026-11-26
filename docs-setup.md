@@ -13,6 +13,11 @@ Supabase (قاعدة البيانات والدخول)، Google (زر الدخو�
 1. ادخل [supabase.com](https://supabase.com) ← **New project**. اختر اسماً (مثل `craftland`) وكلمة مرور قوية لقاعدة البيانات واحفظها عندك، واختر أقرب منطقة متاحة.
 2. من القائمة الجانبية: **SQL Editor** ← **New query** ← الصق محتوى الملف `supabase/setup.sql` كاملاً ← **Run**.
    يجب أن تظهر `Success. No rows returned`. (شغّله مرة واحدة فقط على مشروع جديد.)
+   ثم **New query** آخر وحدد بريدك كمالك للنظام (بدونه لا يقبل النظام إنشاء أي حساب):
+   ```sql
+   insert into platform_admins (email) values (lower('بريدك@gmail.com'));
+   ```
+   > الدليل الأشمل والمحدّث للتثبيت الجديد داخل [حزمة التثبيت](install/craftland-install.zip).
 3. **Project Settings ← API** (أو Data API / API Keys): انسخ
    - **Project URL** — مثل `https://abcdxyz.supabase.co`
    - **anon / publishable key** — مفتاح عام، آمن في المتصفح.
