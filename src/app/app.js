@@ -98,7 +98,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
   ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -250,17 +250,23 @@ async function dashboardView() {
   const mCn = cns.filter(d => d.status === 'posted' && d.issue_date.startsWith(month));
   const sales = mDocs.reduce((a, d) => a + d.subtotal, 0) - mCn.reduce((a, d) => a + d.subtotal, 0), vat = mDocs.reduce((a, d) => a + d.vat_total, 0) - mCn.reduce((a, d) => a + d.vat_total, 0);
   const open = posted.reduce((a, d) => a + (d.total - d.amount_paid), 0), overdue = posted.filter(d => d.due_date && d.due_date < riyadhToday() && d.payment_status !== 'paid');
-  const [pend, ins, cal, top] = await Promise.all([approvalsCard().catch(() => ''), dashInsights().catch(() => ''), dashCalendar().catch(() => ''), topBalances().catch(() => '')]);
+  const D = uiDash(), want = k => D.order.includes(k) && !D.hidden.includes(k), opt = (k, fn) => want(k) ? fn().catch(() => '') : '';
+  const [pend, ins, cal, top, quick, projs] = await Promise.all([opt('approvals', approvalsCard), opt('insights', dashInsights), opt('calendar', dashCalendar), opt('top', topBalances), opt('quick', dashQuick), opt('projects', dashProjects)]);
   const cash = tb.filter(r => ['1101', '1102', '1103'].includes(r.code)).reduce((a, r) => a + Number(r.balance), 0);
-  $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
-    ${pend}<div class="grid g4" style="margin-bottom:24px">
+  const W = {
+    approvals: pend, quick, calendar: cal, insights: ins, top, projects: projs,
+    kpis: `<div class="grid g4" style="margin-bottom:24px">
       <div class="card stat"><div class="label">مبيعات هذا الشهر <span class="xs">(قبل الضريبة)</span></div><div class="val num">${money(sales)}</div><div class="xs muted">${mDocs.length} فاتورة${mCn.length ? ` · بعد ${mCn.length} إشعار دائن` : ''}</div></div>
       <div class="card stat"><div class="label">ضريبة المخرجات هذا الشهر</div><div class="val num">${money(vat)}</div><div class="xs muted">تُورَّد في الإقرار الضريبي</div></div>
       <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">${money(open)}</div><div class="xs ${overdue.length ? 'down' : 'muted'}">${overdue.length ? overdue.length + ' فاتورة متأخرة' : 'لا يوجد متأخر'}</div></div>
-      <div class="card stat"><div class="label">النقدية والبنك</div><div class="val num">${money(cash)}</div><div class="xs muted">الصندوق + البنك + الشبكة</div></div>
-    </div>${cal}${ins}${top}
-    <h2 style="margin-bottom:12px">آخر الفواتير</h2>
-    ${docs.length ? invoiceTable(docs.slice(0, 6)) : empty('receipt', 'لا توجد فواتير بعد', 'ابدأ بإضافة عميل وصنف، ثم أصدر أول فاتورة — يُسجَّل قيدها في الحسابات تلقائياً.', `<div class="row" style="justify-content:center"><a class="btn secondary" href="#/customers">إضافة عميل</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>`)}`;
+      <div class="card stat"><div class="label">النقدية والبنك</div><div class="val num">${money(cash)}</div><div class="xs muted">الصندوق + البنك + الشبكة</div></div></div>`,
+    invoices: `<h2 style="margin-bottom:12px">آخر الفواتير</h2>
+    ${docs.length ? invoiceTable(docs.slice(0, 6)) : empty('receipt', 'لا توجد فواتير بعد', 'ابدأ بإضافة عميل وصنف، ثم أصدر أول فاتورة — يُسجَّل قيدها في الحسابات تلقائياً.', `<div class="row" style="justify-content:center"><a class="btn secondary" href="#/customers">إضافة عميل</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>`)}`,
+  };
+  $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><button class="btn ghost" id="dcust">${icon('gear')}تخصيص</button><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
+    ${D.order.filter(want).map(k => W[k] ? `<div class="dw" data-w="${k}">${W[k]}</div>` : '').join('') || empty('home', 'لوحة التحكم فارغة', 'أظهر الأقسام التي تريدها من «تخصيص».')}`;
+  $('#dcust').onclick = dashCustomize;
+  $$('#main .dw tr.click').forEach(tr => tr.onclick = e => { if (!e.target.closest('a')) location.hash = tr.dataset.href; });
   wireCalendar();
 }
 
@@ -649,6 +655,7 @@ const ROUTES = [
   ...EXT2_ROUTES,
   ...EXT3_ROUTES,
   ...PROJECT_ROUTES,
+  ...THEME_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';
@@ -661,7 +668,8 @@ async function route() {
       return authView(h === '#/login' ? 'login' : (LocalAPI.mode === api.mode && !localStorage.getItem('daftar-local-v1')?.includes('"email"') ? 'signup' : 'login')); }
     if (api.mode === 'supabase' && (recovering || h === '#/reset')) { if (location.hash !== '#/reset') { location.hash = '#/reset'; return; } return resetView(); }
     if (['#/login', '#/signup', '#/forgot'].includes(h)) { location.hash = '#/dashboard'; return; }
-    if (!ORG) { $('#app').innerHTML = loading('جارٍ فتح حسابك…'); ORG = await api.currentOrg(); }
+    if (!ORG) { $('#app').innerHTML = loading('جارٍ فتح حسابك…'); [ORG] = await Promise.all([api.currentOrg(), loadUI()]); applyTheme(); }
+    if ((location.hash || '#/dashboard') !== h) return;   // the user moved on while we were loading
     if (NEW_ORG) return onboardingView();
     if (!ORG) { if (api.mode === 'supabase' && !(await api.whoami()).is_platform_admin) return noCompanyView(s.user?.email); return onboardingView(); }
     const r = ROUTES.find(([re]) => re.test(h));
