@@ -4,7 +4,7 @@
 // =====================================================================
 
 // ---------- point of sale ----------
-const POS_CART = 'daftar-pos-cart';
+const POS_CART = 'daftar-pos-cart', POS_PAPER = 'daftar-pos-paper';
 async function posView() {
   shell('pos', loading());
   if (!can('sales', 'post')) { shell('pos', `<div class="page-head"><h1>نقطة البيع</h1></div>${empty('lock', 'تحتاج صلاحية «اعتماد وترحيل» في المبيعات', 'نقطة البيع تُصدر الفاتورة وتقبض المبلغ فوراً.')}`); return; }
@@ -74,7 +74,8 @@ function posReceipt(d, method, paid) {
   let qr = ''; try { const ts = `${d.issue_date}T${(d.issue_time || '00:00:00').slice(0, 8)}+03:00`;
     qr = QR.svg(QR.encode(QR.ascii(QR.zatcaTLV({ seller: ORG.name_ar, vatNo: ORG.vat_number || '', timestamp: new Date(ts).toISOString().replace('.000', ''), total: (d.total / 100).toFixed(2), vat: (d.vat_total / 100).toFixed(2) }))), 3); } catch { qr = ''; }
   const bg = document.createElement('div'); bg.className = 'drawer-bg receipt-bg';
-  bg.innerHTML = `<div class="receipt-wrap"><div class="receipt80" id="rcpt">
+  const paper = () => { try { return localStorage.getItem(POS_PAPER) === '58' ? '58' : '80'; } catch { return '80'; } };
+  bg.innerHTML = `<div class="receipt-wrap"><div class="row no-print rc-paper" role="group" aria-label="مقاس ورق الطابعة" style="gap:6px;justify-content:center;margin-bottom:10px"><span class="xs" style="color:#fff">مقاس الورق:</span>${['58', '80'].map(w => `<button type="button" class="btn sm ${paper() === w ? 'primary' : 'secondary'}" data-paper="${w}" aria-pressed="${paper() === w}">${w} ملم</button>`).join('')}</div><div class="receipt80${paper() === '58' ? ' rc58' : ''}" id="rcpt">
       <div style="text-align:center"><b style="font-size:15px">${esc(ORG.name_ar)}</b><br>${ORG.vat_number ? `الرقم الضريبي <span class="num">${esc(ORG.vat_number)}</span><br>` : ''}${esc(ORG.city || '')}
         <div style="margin:6px 0;font-weight:700">فاتورة ضريبية مبسطة<br><span style="font-weight:400">Simplified Tax Invoice</span></div></div>
       <div class="rc-row"><span>الرقم</span><span class="num">${esc(d.number)}</span></div><div class="rc-row"><span>التاريخ</span><span class="num">${esc(d.issue_date)} ${esc((d.issue_time || '').slice(0, 5))}</span></div>
@@ -89,7 +90,15 @@ function posReceipt(d, method, paid) {
   document.body.append(bg);
   const close = () => { bg.remove(); $('#posq')?.focus(); };
   $('#rnew', bg).onclick = close; bg.onclick = e => { if (e.target === bg) close(); };
-  $('#rprint', bg).onclick = () => { document.body.classList.add('print-receipt'); window.print(); setTimeout(() => document.body.classList.remove('print-receipt'), 500); };
+  bg.querySelectorAll('[data-paper]').forEach(b => b.onclick = () => { try { localStorage.setItem(POS_PAPER, b.dataset.paper); } catch { /* private mode */ }
+    $('#rcpt', bg).classList.toggle('rc58', b.dataset.paper === '58');
+    bg.querySelectorAll('[data-paper]').forEach(x => { const on = x === b; x.className = 'btn sm ' + (on ? 'primary' : 'secondary'); x.setAttribute('aria-pressed', on); }); });
+  $('#rprint', bg).onclick = () => { document.body.classList.add('print-receipt');
+    // page = exactly the receipt: paper width × receipt height, so the printer driver neither shrinks an A4 page nor feeds blank paper
+    const w = paper() === '58' ? 58 : 80, el = $('#rcpt', bg), st = document.createElement('style'); st.id = 'rc-page';
+    const h = Math.ceil(el.scrollHeight * 25.4 / 96 * (w / (el.getBoundingClientRect().width * 25.4 / 96 || w))) + 12;
+    st.textContent = `@page { size: ${w}mm ${Math.max(h, 60)}mm; margin: 0; }`; document.querySelectorAll('#rc-page').forEach(x => x.remove()); document.head.append(st);
+    window.print(); setTimeout(() => { document.body.classList.remove('print-receipt'); st.remove(); }, 800); };
   $('#rnew', bg).focus();
 }
 

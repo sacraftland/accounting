@@ -114,11 +114,17 @@ details summary { cursor: pointer; margin-top: 8px; }
 .receipt80 hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
 .rc-row { display: flex; justify-content: space-between; gap: 8px; }
 .receipt80 svg { width: 110px; height: 110px; }
+.receipt80.rc58 { width: 58mm; padding: 8px 6px; font-size: 11.5px; line-height: 1.45; font-weight: 500; }
+.receipt80.rc58 b, .receipt80.rc58 .rc-row[style*="800"] { font-weight: 800; }
+.receipt80.rc58 .xs { font-size: 11px; }
+.receipt80.rc58 svg { width: 100px; height: 100px; }
+.rc-paper .btn.sm { min-height: 30px; padding: 2px 12px; }
 @media print {
   body.print-receipt > *:not(.receipt-bg) { display: none !important; }
   body.print-receipt .receipt-bg { position: static; background: none; display: block; }
-  body.print-receipt .receipt80 { box-shadow: none; width: 72mm; padding: 0; }
-  @page { margin: 4mm; }
+  body.print-receipt .receipt-wrap { padding: 0; max-height: none; overflow: visible; }
+  body.print-receipt .receipt80 { box-shadow: none; border-radius: 0; width: 80mm; padding: 3mm 4mm; box-sizing: border-box; }
+  body.print-receipt .receipt80.rc58 { width: 58mm; padding: 2mm 3mm; color: #000; }
 }
 
 /* kanban, calendar */
