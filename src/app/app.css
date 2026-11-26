@@ -123,8 +123,13 @@ details summary { cursor: pointer; margin-top: 8px; }
   body.print-receipt > *:not(.receipt-bg) { display: none !important; }
   body.print-receipt .receipt-bg { position: static; background: none; display: block; }
   body.print-receipt .receipt-wrap { padding: 0; max-height: none; overflow: visible; }
-  body.print-receipt .receipt80 { box-shadow: none; border-radius: 0; width: 80mm; padding: 3mm 4mm; box-sizing: border-box; }
-  body.print-receipt .receipt80.rc58 { width: 58mm; padding: 2mm 3mm; color: #000; }
+  /* fill whatever page width the printer driver gives (some Android print services ignore @page size), sizes relative to it */
+  html:has(body.print-receipt), body.print-receipt { margin: 0 !important; padding: 0 !important; width: auto !important; min-width: 0 !important; background: #fff !important; }
+  body.print-receipt .receipt80 { box-shadow: none; border-radius: 0; width: 100% !important; max-width: none; margin: 0; padding: 0 3vw 2vw; box-sizing: border-box; font-size: 4vw; color: #000; }
+  body.print-receipt .receipt80.rc58 { font-size: 5.2vw; padding: 0 2.5vw 2vw; font-weight: 600; }
+  body.print-receipt .receipt80 b[style], body.print-receipt .receipt80 .rc-row[style*="800"] { font-size: 1.25em !important; }
+  body.print-receipt .receipt80 .xs, body.print-receipt .receipt80 p { font-size: .92em !important; }
+  body.print-receipt .receipt80 svg { width: 46vw; height: 46vw; }
 }
 
 /* kanban, calendar */
