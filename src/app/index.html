@@ -2331,12 +2331,15 @@ async function warehousesView() {
     async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); await api.saveWarehouse({ name: v.name.trim(), kind: v.kind, ...(v.branch_id ? { branch_id: v.branch_id } : {}) }); toast('أُضيف المستودع'); warehousesView(); });
 }
 const SD_KIND = { transfer: ['تحويل بين مستودعات', 'TRF'], count: ['جرد وتسوية', 'CNT'], waste: ['تالف وهالك', 'WST'], opening: ['رصيد افتتاحي', 'OPN'] };
+// issues to / returns from a project are made from the project page, but listed and opened here too
+const SD_ALL = { ...SD_KIND, issue: ['صرف مواد لمشروع', 'ISS'], issue_return: ['إرجاع مواد من مشروع', 'IRT'] };
+const sdLabel = k => (SD_ALL[k] || [k])[0];
 async function stockDocsView() {
   shell('stock', loading()); const [ds, whs] = await Promise.all([api.listStockDocs(), api.listWarehouses()]); const W = Object.fromEntries(whs.map(w => [w.id, w.name]));
   $('#main').innerHTML = `<div class="page-head"><h1>حركات المخزون</h1>${can('inventory', 'create') ? `<a class="btn primary" href="#/stock/new">${icon('plus')}حركة جديدة</a>` : ''}</div>
     <p class="muted" style="margin:-8px 0 16px">التحويل بين المستودعات، والجرد، والتالف، والأرصدة الافتتاحية. البيع والشراء والتصنيع تُحرّك المخزون تلقائياً.</p>
     ${ds.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الرقم</th><th>النوع</th><th>التاريخ</th><th>المستودع</th><th class="amt">البنود</th><th>الحالة</th></tr></thead><tbody>
-      ${ds.map(d => `<tr class="click" data-href="#/stock/${esc(d.id)}"><td class="num"><a class="rowlink" href="#/stock/${esc(d.id)}">${esc(d.number || 'مسودة')}</a></td><td>${esc(SD_KIND[d.kind][0])}</td><td class="num m-hide">${esc(d.doc_date)}</td>
+      ${ds.map(d => `<tr class="click" data-href="#/stock/${esc(d.id)}"><td class="num"><a class="rowlink" href="#/stock/${esc(d.id)}">${esc(d.number || 'مسودة')}</a></td><td>${esc(sdLabel(d.kind))}</td><td class="num m-hide">${esc(d.doc_date)}</td>
         <td class="m-sub">${esc(d.kind === 'transfer' ? `${W[d.from_warehouse_id] || ''} ← ${W[d.to_warehouse_id] || ''}` : W[d.from_warehouse_id || d.to_warehouse_id] || '')}</td><td class="amt num">${d.stock_doc_lines.length}</td><td>${statusBadge(d)}</td></tr>`).join('')}</tbody></table></div>`
     : empty('box', 'لا توجد حركات بعد', 'ابدأ بإدخال الأرصدة الافتتاحية لمخزونك الحالي.', can('inventory', 'create') ? `<a class="btn primary" href="#/stock/new?kind=opening">رصيد افتتاحي</a>` : '')}`;
 }
@@ -2399,7 +2402,7 @@ async function stockDocView(id, pre) {
   shell('stock', loading()); const [d, whs, items] = await Promise.all([pre || api.getStockDoc(id), api.listWarehouses(), api.listItems()]);
   if (d.status === 'draft' && can('inventory', 'create')) return stockDocEditView(id);
   const W = Object.fromEntries(whs.map(w => [w.id, w.name])), I = Object.fromEntries(items.map(i => [i.id, i]));
-  $('#main').innerHTML = `<a class="crumb" href="#/stock">${icon('chev')} حركات المخزون</a><div class="page-head"><h1>${esc(SD_KIND[d.kind][0])} <span class="num">${esc(d.number || '')}</span></h1>${statusBadge(d)}
+  $('#main').innerHTML = `<a class="crumb" href="#/stock">${icon('chev')} حركات المخزون</a><div class="page-head"><h1>${esc(sdLabel(d.kind))} <span class="num">${esc(d.number || '')}</span></h1>${statusBadge(d)}
       ${d.status === 'draft' && can('inventory', 'post') ? '<button class="btn primary" id="apps">اعتماد وترحيل</button>' : ''}</div>
     <div class="card" style="margin-bottom:16px"><dl class="kv"><dt>التاريخ</dt><dd class="num">${esc(d.doc_date)}</dd><dt>المستودع</dt><dd>${esc(d.kind === 'transfer' ? `${W[d.from_warehouse_id]} ← ${W[d.to_warehouse_id]}` : W[d.from_warehouse_id || d.to_warehouse_id] || '')}</dd>${d.note ? `<dt>ملاحظات</dt><dd>${esc(d.note)}</dd>` : ''}</dl></div>
     <div class="tbl-wrap"><table><thead><tr><th>الصنف</th>${d.kind === 'count' ? '<th class="amt">رصيد النظام</th><th class="amt">المعدود</th><th class="amt">الفرق</th>' : '<th class="amt">الكمية</th>'}<th class="amt">تكلفة الوحدة</th><th class="amt">القيمة</th></tr></thead><tbody>
@@ -2650,7 +2653,7 @@ async function approvalsCard() {
   if (can2('sales') || can2('purchases')) (await api.listDocuments(null)).filter(d => d.status === 'draft' && d.submitted_at && can2(doc_module_js(d.kind))).forEach(d => out.push([docLink(d) + '/edit', KIND_NAME[d.kind], d.party_name]));
   if (can2('expenses')) (await api.listExpenses()).filter(x => x.status === 'draft' && x.submitted_at).forEach(x => out.push(['#/expenses', 'مصروف', x.description || money(x.amount + x.vat_amount)]));
   if (can2('manufacturing')) (await api.listMfg()).filter(m => m.status === 'draft' && m.submitted_at).forEach(m => out.push(['#/mfg/' + m.id, 'أمر تصنيع', m.items?.name_ar]));
-  if (can2('inventory')) (await api.listStockDocs()).filter(s => s.status === 'draft' && s.submitted_at).forEach(s => out.push(['#/stock/' + s.id, SD_KIND[s.kind][0], s.doc_date]));
+  if (can2('inventory')) (await api.listStockDocs()).filter(s => s.status === 'draft' && s.submitted_at).forEach(s => out.push(['#/stock/' + s.id, sdLabel(s.kind), s.doc_date]));
   if (can2('hr')) (await api.listPayrollRuns()).filter(r => r.status === 'draft' && r.submitted_at).forEach(r => out.push(['#/payroll/' + r.id, 'مسير رواتب', monthName(r.period_month)]));
   if (!out.length) return '';
   return `<section class="card" style="margin-bottom:24px;border-color:var(--c-warning)"><h2 style="margin-bottom:8px">بانتظار اعتمادك <span class="badge b-warn num">${out.length}</span></h2>

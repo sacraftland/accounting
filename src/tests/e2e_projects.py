@@ -246,6 +246,11 @@ with sync_playwright() as p:
     go('#/dashboard', 1200)
 
     check('books balance', one("select sum(debit) = sum(credit) from journal_lines") == 't')
+    go('#/stock', 1200)
+    check('stock movements list shows project issues (regression)', 'صرف مواد لمشروع' in main() and 'تعذّر تحميل' not in main(), main()[:200])
+    sid = one(f"select id from stock_docs where kind = 'issue' limit 1")
+    if sid:
+        go(f'#/stock/{sid}', 1200); check('a project issue opens from the stock list', 'صرف مواد لمشروع' in main() and 'تعذّر تحميل' not in main(), main()[:200])
     check('no page errors', not errs, ' | '.join(errs[:3]))
     b.close()
 
