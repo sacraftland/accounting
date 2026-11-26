@@ -97,7 +97,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['projects', 'chart', 'المشاريع ومراكز التكلفة', 'accounting|manufacturing|reports'], ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
   ['g', '', 'المتابعة', null], ['tasks', 'file', 'المهام', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -643,6 +643,7 @@ const ROUTES = [
   ...POS_ROUTES,
   ...REPORT_ROUTES,
   ...EXT_ROUTES,
+  ...EXT2_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

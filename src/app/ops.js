@@ -429,9 +429,12 @@ async function warehousesView() {
         <td class="amt num"><b class="${i.on_hand < 0 ? 'down' : ''}">${fq(i.on_hand)}</b> ${esc(i.unit)}</td><td class="amt num">${money(i.avg_cost)}</td><td class="amt num">${money(Number(i.on_hand) * Number(i.avg_cost))}</td></tr>`).join('')}</tbody></table></div>`
     : empty('box', 'لا توجد أصناف مخزنية', 'أضف المواد الخام والمنتجات من صفحة الأصناف.', '<a class="btn primary" href="#/items">الأصناف</a>')}
     <p class="muted xs" style="margin-top:12px">${ORG.allow_negative_stock ? 'البيع والصرف بدون رصيد مسموح حالياً — يمكن منعه من الإعدادات.' : 'لا يُسمح بالصرف بأكثر من الرصيد المتوفر في المستودع.'}</p>`;
+  const brs = api.listBranches ? await api.listBranches().catch(() => []) : [];
+  if (brs.length > 1) $$('#main thead th').forEach(th => { const w = whs.find(x => x.name === th.textContent); const b = w && brs.find(b => b.id === w.branch_id); if (b) th.insertAdjacentHTML('beforeend', `<div class="xs muted">${esc(b.name)}</div>`); });
   if ($('#neww')) $('#neww').onclick = () => drawer('مستودع جديد', `${field('name', 'اسم المستودع', { req: true, help: 'مثل: مستودع المواد الخام، الورشة، صالة العرض' })}
-      ${select('kind', 'النوع', [['general', 'عام'], ['raw', 'مواد خام'], ['finished', 'منتجات تامة'], ['site', 'موقع مشروع']], 'general')}`,
-    async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); await api.saveWarehouse({ name: v.name.trim(), kind: v.kind }); toast('أُضيف المستودع'); warehousesView(); });
+      ${select('kind', 'النوع', [['general', 'عام'], ['raw', 'مواد خام'], ['finished', 'منتجات تامة'], ['site', 'موقع مشروع']], 'general')}
+      ${brs.length > 1 ? select('branch_id', 'الفرع', brs.map(b => [b.id, b.name]), brs[0].id) : ''}`,
+    async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); await api.saveWarehouse({ name: v.name.trim(), kind: v.kind, ...(v.branch_id ? { branch_id: v.branch_id } : {}) }); toast('أُضيف المستودع'); warehousesView(); });
 }
 const SD_KIND = { transfer: ['تحويل بين مستودعات', 'TRF'], count: ['جرد وتسوية', 'CNT'], waste: ['تالف وهالك', 'WST'], opening: ['رصيد افتتاحي', 'OPN'] };
 async function stockDocsView() {
@@ -457,7 +460,8 @@ async function stockDocEditView(id, qs) {
       <div class="field" id="wto"><label for="f-to">إلى مستودع</label><select class="input" id="f-to" name="to_warehouse_id">${optList(whs.map(w => [w.id, w.name]), d.to_warehouse_id)}</select></div></div>
       <p class="note" id="sdhelp" style="margin-bottom:12px"></p>
       <div class="tbl-wrap editor"><table><thead><tr><th style="min-width:200px">الصنف</th><th class="amt">الرصيد الحالي</th><th style="width:140px" id="qh">الكمية</th><th style="width:140px" id="ch">تكلفة الوحدة</th><th style="width:44px"></th></tr></thead><tbody id="sl"></tbody></table></div>
-      <button type="button" class="btn ghost sm" style="margin-top:8px" id="adds">${icon('plus')}إضافة صنف</button>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="adds">${icon('plus')}إضافة صنف</button>
+        <button type="button" class="btn ghost sm" id="sdexp">${icon('down')}ورقة جرد Excel (CSV)</button><label class="btn ghost sm" style="cursor:pointer">${icon('plus')}استيراد كميات من Excel (CSV)<input type="file" id="sdimp" accept=".csv,.txt,text/csv" hidden></label></div>
       ${field('note', 'ملاحظات', { value: d.note || '' })}
       <p class="help err" id="serr2" role="alert"></p>
       <div class="row" style="justify-content:flex-end;margin-top:16px">${ex ? '<button type="button" class="btn ghost" id="dels" style="color:var(--c-danger)">حذف المسودة</button>' : ''}<a class="btn ghost" href="#/stock">إلغاء</a>
@@ -477,6 +481,12 @@ async function stockDocEditView(id, qs) {
   $('#sl').addEventListener('change', e => { const tr = e.target.closest('tr'); if (tr && e.target.dataset.k === 'item_id') { const l = lines[tr.dataset.i]; l.item_id = e.target.value; if (kind() === 'opening' && l.unit_cost == null) l.unit_cost = Math.round(Number(stock.find(s => s.id === l.item_id)?.avg_cost) || 0); draw(); } });
   $('#sl').addEventListener('click', e => { if (e.target.closest('[data-del]')) { lines.splice(e.target.closest('tr').dataset.i, 1); if (!lines.length) lines.push({ item_id: '', qty: '', unit_cost: null }); draw(); } });
   $('#adds').onclick = () => { lines.push({ item_id: '', qty: '', unit_cost: null }); draw(); };
+  $('#sdexp').onclick = () => { const w = wh(); stockSheetExport(stock, q, w, whs.find(x => x.id === w)?.name || ''); };
+  $('#sdimp').onchange = async e => { const file = e.target.files[0]; if (!file) return;
+    try { const r = await stockSheetImport(file, stock); if (!r.lines.length) throw new AppError('لا توجد كميات في الملف');
+      lines = r.lines.map(l => ({ ...l, unit_cost: kind() === 'opening' ? (l.unit_cost ?? Math.round(Number(stock.find(s => s.id === l.item_id)?.avg_cost) || 0)) : null })); draw();
+      toast(`أُضيف ${r.lines.length} صنف${r.missing.length ? ` — لم يُعرف ${r.missing.length}: ${r.missing.slice(0, 5).join('، ')}` : ''}`, r.missing.length ? 'warn' : 'ok'); }
+    catch (x) { toast(x.message, 'bad'); } e.target.value = ''; };
   const save = async mode => { const f = Object.fromEntries(new FormData($('#sdf'))), err = $('#serr2'); err.textContent = '';
     const real = lines.filter(l => l.item_id); if (!real.length) return err.textContent = 'أضف صنفاً واحداً على الأقل';
     if (real.some(l => !Number.isFinite(l.qty) || l.qty < 0 || (l.qty === 0 && f.kind !== 'count'))) return err.textContent = 'تحقق من الكميات';

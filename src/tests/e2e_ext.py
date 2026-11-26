@@ -186,6 +186,46 @@ with sync_playwright() as p:
     check('evaluation saved', one("select array_length(scores,1) from evaluations") == '10', err())
     check('evaluation listed with grade', '73 / 100' in main() and 'جيد' in main())
 
+    # ================= wave 4: reports =================
+    go('#/reports/cf?p=this-y', 2500)
+    check('cash flow report', 'قائمة التدفقات النقدية' in main() and '99,000.00' in main(), main()[:600])
+    check('cash flow reconciles', 'فرق في المطابقة' not in main())
+    go('#/reports/cmp', 2000)
+    check('12-month comparison', 'التحليل المقارن' in main() and pg.locator('#rep svg.chart').count() == 1, main()[:300])
+    go('#/reports/budget', 2000)
+    inp = pg.locator('#rep tr[data-a] [data-bud]').nth(5); inp.fill('12000'); pg.click('#budsave'); pg.wait_for_timeout(2000)
+    check('budget saved split over 12 months', one("select array_length(amounts,1)||':'||(select sum(x) from unnest(amounts) x) from budgets") == '12:1200000', one("select count(*) from budgets"))
+    check('budget shows target to date', 'المستهدف حتى الآن' in main())
+    go('#/reports/kpi', 2500)
+    check('KPI report with Altman Z and zakat', 'ألتمان' in main() and 'وعاء الزكاة' in main() and 'نسبة التداول' in main(), main()[:400])
+    shot('kpi')
+
+    # ================= wave 5: import & branches =================
+    go('#/import?t=customers')
+    csv = 'الاسم,الرقم الضريبي,الجوال,المدينة,حد الائتمان\nشركة الواحة,300000000000003,0501112222,الرياض,10000\nمؤسسة النخيل,,0503334444,جدة,\n,,,,\nخطأ ضريبي,123,,,\n'
+    pg.set_input_files('#csvf', files=[{'name': 'c.csv', 'mimeType': 'text/csv', 'buffer': ('\ufeff' + csv).encode('utf-8')}]); pg.wait_for_timeout(800)
+    check('import preview: 2 ready, 1 bad', '2</b> صف جاهز' in pg.inner_html('#prev') and 'رقم ضريبي غير صحيح' in pg.inner_text('#prev'), pg.inner_text('#prev')[:300])
+    pg.click('#doimp'); pg.wait_for_timeout(2500)
+    check('customers imported', one("select count(*) from parties where name in ('شركة الواحة','مؤسسة النخيل') and kind='customer'") == '2')
+    check('credit limit imported in halalas', one("select credit_limit from parties where name='شركة الواحة'") == '1000000')
+    go('#/import?t=items')
+    csv = 'name;sku;kind;unit;price;cost\nلوح ألمنيوم;AL-1;مادة خام;لوح;0;85\nكرسي تخييم;CH-1;منتج;حبة;150;60\nصيانة;SV-9;خدمة;;200;\n'
+    pg.set_input_files('#csvf', files=[{'name': 'i.csv', 'mimeType': 'text/csv', 'buffer': csv.encode('utf-8')}]); pg.wait_for_timeout(800)
+    pg.click('#doimp'); pg.wait_for_timeout(2500)
+    check('items imported (semicolon CSV, English headers)', one("select string_agg(kind||':'||track_stock, ',' order by sku) from items where sku in ('AL-1','CH-1','SV-9')") == 'raw_material:true,product:true,service:false', one("select count(*) from items"))
+    go('#/stock/new?kind=count', 1200)
+    pg.select_option('#f-kind', 'count'); pg.wait_for_timeout(200)
+    csv = 'الرمز,الاسم,الكمية الفعلية\nAL-1,,40\nCH-1,,12\nXX-404,,3\n'
+    pg.set_input_files('#sdimp', files=[{'name': 's.csv', 'mimeType': 'text/csv', 'buffer': csv.encode('utf-8')}]); pg.wait_for_timeout(800)
+    check('stock count CSV fills lines, flags unknown sku', pg.locator('#sl tr').count() == 2 and 'XX-404' in ' '.join(pg.locator('.toast').all_inner_texts()), str(pg.locator('#sl tr').count()))
+    with pg.expect_download() as dlinfo: pg.click('#sdexp')
+    check('count sheet export downloads', dlinfo.value.suggested_filename.endswith('.csv'))
+    go('#/branches')
+    check('branches page lists main branch', 'الفرع الرئيسي' in main(), main()[:200])
+    pg.click('#newb'); pg.wait_for_timeout(300); pg.fill('.drawer #f-name', 'فرع جدة'); pg.fill('.drawer #f-city', 'جدة'); submit(1500)
+    check('branch + its warehouse created', one("select count(*) from warehouses w join branches b on b.id=w.branch_id where b.name='فرع جدة'") == '1', err())
+    check('branch card shows warehouse', 'مستودع فرع جدة' in main())
+
     check('no page errors', not errs, ' | '.join(errs[:3]))
     b.close()
 

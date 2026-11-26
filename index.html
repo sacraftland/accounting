@@ -913,6 +913,8 @@ const SupabaseAPI = (cfg) => {
     async postManualEntry(date, memo, lines) { return ok(await sb.rpc('post_manual_entry', { p_org: await orgId(), p_date: date, p_memo: memo, p_lines: lines })); },
     async reverseEntry(id, date) { return ok(await sb.rpc('reverse_entry', { e: id, on_date: date })); },
     // ---------- warehouses & stock ----------
+    async listBranches() { return ok(await sb.from('branches').select('*').eq('org_id', await orgId()).order('created_at')); },
+    async saveBranch(b) { const row = { ...b, org_id: await orgId() }; return b.id ? ok(await sb.from('branches').update(row).eq('id', b.id).select().single()) : ok(await sb.from('branches').insert(row).select().single()); },
     async listWarehouses() { return ok(await sb.from('warehouses').select('*').eq('org_id', await orgId()).order('created_at')); },
     async saveWarehouse(w) { const o = await orgId(); if (!w.branch_id) w = { ...w, branch_id: ok(await sb.from('branches').select('id').eq('org_id', o).limit(1).single()).id };
       return ok(await sb.from('warehouses').upsert(nulls({ ...w, org_id: o })).select().single()); },
@@ -1122,7 +1124,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['projects', 'chart', 'المشاريع ومراكز التكلفة', 'accounting|manufacturing|reports'], ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
   ['g', '', 'المتابعة', null], ['tasks', 'file', 'المهام', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -2084,9 +2086,12 @@ async function warehousesView() {
         <td class="amt num"><b class="${i.on_hand < 0 ? 'down' : ''}">${fq(i.on_hand)}</b> ${esc(i.unit)}</td><td class="amt num">${money(i.avg_cost)}</td><td class="amt num">${money(Number(i.on_hand) * Number(i.avg_cost))}</td></tr>`).join('')}</tbody></table></div>`
     : empty('box', 'لا توجد أصناف مخزنية', 'أضف المواد الخام والمنتجات من صفحة الأصناف.', '<a class="btn primary" href="#/items">الأصناف</a>')}
     <p class="muted xs" style="margin-top:12px">${ORG.allow_negative_stock ? 'البيع والصرف بدون رصيد مسموح حالياً — يمكن منعه من الإعدادات.' : 'لا يُسمح بالصرف بأكثر من الرصيد المتوفر في المستودع.'}</p>`;
+  const brs = api.listBranches ? await api.listBranches().catch(() => []) : [];
+  if (brs.length > 1) $$('#main thead th').forEach(th => { const w = whs.find(x => x.name === th.textContent); const b = w && brs.find(b => b.id === w.branch_id); if (b) th.insertAdjacentHTML('beforeend', `<div class="xs muted">${esc(b.name)}</div>`); });
   if ($('#neww')) $('#neww').onclick = () => drawer('مستودع جديد', `${field('name', 'اسم المستودع', { req: true, help: 'مثل: مستودع المواد الخام، الورشة، صالة العرض' })}
-      ${select('kind', 'النوع', [['general', 'عام'], ['raw', 'مواد خام'], ['finished', 'منتجات تامة'], ['site', 'موقع مشروع']], 'general')}`,
-    async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); await api.saveWarehouse({ name: v.name.trim(), kind: v.kind }); toast('أُضيف المستودع'); warehousesView(); });
+      ${select('kind', 'النوع', [['general', 'عام'], ['raw', 'مواد خام'], ['finished', 'منتجات تامة'], ['site', 'موقع مشروع']], 'general')}
+      ${brs.length > 1 ? select('branch_id', 'الفرع', brs.map(b => [b.id, b.name]), brs[0].id) : ''}`,
+    async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); await api.saveWarehouse({ name: v.name.trim(), kind: v.kind, ...(v.branch_id ? { branch_id: v.branch_id } : {}) }); toast('أُضيف المستودع'); warehousesView(); });
 }
 const SD_KIND = { transfer: ['تحويل بين مستودعات', 'TRF'], count: ['جرد وتسوية', 'CNT'], waste: ['تالف وهالك', 'WST'], opening: ['رصيد افتتاحي', 'OPN'] };
 async function stockDocsView() {
@@ -2112,7 +2117,8 @@ async function stockDocEditView(id, qs) {
       <div class="field" id="wto"><label for="f-to">إلى مستودع</label><select class="input" id="f-to" name="to_warehouse_id">${optList(whs.map(w => [w.id, w.name]), d.to_warehouse_id)}</select></div></div>
       <p class="note" id="sdhelp" style="margin-bottom:12px"></p>
       <div class="tbl-wrap editor"><table><thead><tr><th style="min-width:200px">الصنف</th><th class="amt">الرصيد الحالي</th><th style="width:140px" id="qh">الكمية</th><th style="width:140px" id="ch">تكلفة الوحدة</th><th style="width:44px"></th></tr></thead><tbody id="sl"></tbody></table></div>
-      <button type="button" class="btn ghost sm" style="margin-top:8px" id="adds">${icon('plus')}إضافة صنف</button>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="adds">${icon('plus')}إضافة صنف</button>
+        <button type="button" class="btn ghost sm" id="sdexp">${icon('down')}ورقة جرد Excel (CSV)</button><label class="btn ghost sm" style="cursor:pointer">${icon('plus')}استيراد كميات من Excel (CSV)<input type="file" id="sdimp" accept=".csv,.txt,text/csv" hidden></label></div>
       ${field('note', 'ملاحظات', { value: d.note || '' })}
       <p class="help err" id="serr2" role="alert"></p>
       <div class="row" style="justify-content:flex-end;margin-top:16px">${ex ? '<button type="button" class="btn ghost" id="dels" style="color:var(--c-danger)">حذف المسودة</button>' : ''}<a class="btn ghost" href="#/stock">إلغاء</a>
@@ -2132,6 +2138,12 @@ async function stockDocEditView(id, qs) {
   $('#sl').addEventListener('change', e => { const tr = e.target.closest('tr'); if (tr && e.target.dataset.k === 'item_id') { const l = lines[tr.dataset.i]; l.item_id = e.target.value; if (kind() === 'opening' && l.unit_cost == null) l.unit_cost = Math.round(Number(stock.find(s => s.id === l.item_id)?.avg_cost) || 0); draw(); } });
   $('#sl').addEventListener('click', e => { if (e.target.closest('[data-del]')) { lines.splice(e.target.closest('tr').dataset.i, 1); if (!lines.length) lines.push({ item_id: '', qty: '', unit_cost: null }); draw(); } });
   $('#adds').onclick = () => { lines.push({ item_id: '', qty: '', unit_cost: null }); draw(); };
+  $('#sdexp').onclick = () => { const w = wh(); stockSheetExport(stock, q, w, whs.find(x => x.id === w)?.name || ''); };
+  $('#sdimp').onchange = async e => { const file = e.target.files[0]; if (!file) return;
+    try { const r = await stockSheetImport(file, stock); if (!r.lines.length) throw new AppError('لا توجد كميات في الملف');
+      lines = r.lines.map(l => ({ ...l, unit_cost: kind() === 'opening' ? (l.unit_cost ?? Math.round(Number(stock.find(s => s.id === l.item_id)?.avg_cost) || 0)) : null })); draw();
+      toast(`أُضيف ${r.lines.length} صنف${r.missing.length ? ` — لم يُعرف ${r.missing.length}: ${r.missing.slice(0, 5).join('، ')}` : ''}`, r.missing.length ? 'warn' : 'ok'); }
+    catch (x) { toast(x.message, 'bad'); } e.target.value = ''; };
   const save = async mode => { const f = Object.fromEntries(new FormData($('#sdf'))), err = $('#serr2'); err.textContent = '';
     const real = lines.filter(l => l.item_id); if (!real.length) return err.textContent = 'أضف صنفاً واحداً على الأقل';
     if (real.some(l => !Number.isFinite(l.qty) || l.qty < 0 || (l.qty === 0 && f.kind !== 'count'))) return err.textContent = 'تحقق من الكميات';
@@ -2471,18 +2483,19 @@ function tableToCsv(tbl, name) {
 const REPORTS = [['pl', 'قائمة الدخل'], ['bs', 'المركز المالي'], ['vat', 'الإقرار الضريبي'], ['aging', 'أعمار الذمم'], ['stock', 'تقييم المخزون'], ['mfg', 'تقرير الإنتاج']];
 async function reportsView(which, qs) {
   shell('reports', loading());
-  const tab = REPORTS.some(r => r[0] === which) ? which : 'pl';
-  const presets = periodPresets(), def = tab === 'vat' ? 'last-q' : tab === 'bs' ? 'this-y' : 'this-month';
+  const ALL = [...REPORTS, ...REPORTS2.map(r => [r[0], r[1]])], asOf = ['bs', 'kpi'];
+  const tab = ALL.some(r => r[0] === which) ? which : 'pl';
+  const presets = periodPresets(), def = tab === 'vat' ? 'last-q' : asOf.includes(tab) ? 'this-y' : 'this-month';
   const pk = qs?.get('p') || sessionStorage.getItem('rep-p-' + tab) || def;
   const pr = presets.find(p => p[0] === pk);
   const from = qs?.get('from') || pr?.[2] || presets[0][2], to = qs?.get('to') || pr?.[3] || presets[0][3];
-  const needsPeriod = !['aging', 'stock'].includes(tab);
+  const needsPeriod = !['aging', 'stock', 'cmp', 'budget'].includes(tab);
   $('#main').innerHTML = `<div class="page-head no-print"><h1>التقارير</h1><button class="btn secondary" id="csv">${icon('down')}تصدير Excel (CSV)</button><button class="btn secondary" onclick="window.print()">${icon('down')}طباعة / PDF</button></div>
-    <div class="tabs no-print" role="tablist">${REPORTS.map(([k, t]) => `<a role="tab" class="${k === tab ? 'on' : ''}" aria-selected="${k === tab}" href="#/reports/${k}">${t}</a>`).join('')}</div>
+    <div class="tabs no-print" role="tablist">${ALL.map(([k, t]) => `<a role="tab" class="${k === tab ? 'on' : ''}" aria-selected="${k === tab}" href="#/reports/${k}">${t}</a>`).join('')}</div>
     ${needsPeriod ? `<form class="row no-print" id="perf" style="flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:flex-end">
       <div class="field" style="margin:0"><label for="f-preset">الفترة</label><select class="input" id="f-preset" style="height:38px">${presets.map(([k, t]) => `<option value="${k}"${k === pk ? ' selected' : ''}>${t}</option>`).join('')}<option value="custom"${!pr ? ' selected' : ''}>فترة مخصصة</option></select></div>
-      ${tab !== 'bs' ? `<div class="field" style="margin:0"><label for="f-from">من</label><input class="input" type="date" id="f-from" value="${esc(from)}" style="height:38px"></div>` : ''}
-      <div class="field" style="margin:0"><label for="f-to">${tab === 'bs' ? 'كما في تاريخ' : 'إلى'}</label><input class="input" type="date" id="f-to" value="${esc(to)}" style="height:38px"></div>
+      ${!asOf.includes(tab) ? `<div class="field" style="margin:0"><label for="f-from">من</label><input class="input" type="date" id="f-from" value="${esc(from)}" style="height:38px"></div>` : ''}
+      <div class="field" style="margin:0"><label for="f-to">${asOf.includes(tab) ? 'كما في تاريخ' : 'إلى'}</label><input class="input" type="date" id="f-to" value="${esc(to)}" style="height:38px"></div>
       <button class="btn primary" type="submit">عرض</button></form>` : ''}
     <section class="card" id="rep">${loading()}</section>`;
   if (needsPeriod) {
@@ -2490,9 +2503,9 @@ async function reportsView(which, qs) {
     $('#perf').onsubmit = e => { e.preventDefault(); sessionStorage.removeItem('rep-p-' + tab); location.hash = `#/reports/${tab}?p=custom&from=${$('#f-from')?.value || from}&to=${$('#f-to').value}`; };
   }
   const head = (title, sub) => `<div class="rep-head"><b style="font-size:18px">${esc(ORG.name_ar)}</b>${ORG.vat_number ? ` <span class="muted xs">· الرقم الضريبي <span class="num">${esc(ORG.vat_number)}</span></span>` : ''}<h2 style="margin:4px 0">${title}</h2><p class="muted" style="margin:0 0 16px">${sub}</p></div>`;
-  const R = { pl: plReport, bs: bsReport, vat: vatReport, aging: agingReport, stock: stockReport, mfg: mfgReport }[tab];
+  const R = { pl: plReport, bs: bsReport, vat: vatReport, aging: agingReport, stock: stockReport, mfg: mfgReport, ...Object.fromEntries(REPORTS2.map(r => [r[0], r[2]])) }[tab];
   $('#rep').innerHTML = await R(from, to, head);
-  $('#csv').onclick = () => { const t = $('#rep table'); if (t) tableToCsv(t, (REPORTS.find(r => r[0] === tab)[1]) + ' ' + (needsPeriod ? from + '_' + to : riyadhToday())); else toast('لا يوجد جدول للتصدير', 'warn'); };
+  $('#csv').onclick = () => { const t = $('#rep table'); if (t) tableToCsv(t, (ALL.find(r => r[0] === tab)[1]) + ' ' + (needsPeriod ? from + '_' + to : riyadhToday())); else toast('لا يوجد جدول للتصدير', 'warn'); };
 }
 
 const groupCode = (rows, r) => { const byId = Object.fromEntries(rows.map(x => [x.account_id, x])); return byId[r.parent_id]; };
@@ -2757,6 +2770,129 @@ const REPORT_ROUTES = [
   [/^#\/payroll$/, gate('payroll', 'الرواتب', 'hr', payrollListView)],
   [/^#\/payroll\/([\w-]+)$/, gate('payroll', 'الرواتب', 'hr', m => payrollRunView(m[1]))],
 ];
+
+// =====================================================================
+// Wave 4 reports: cash flow, 12-month comparison, budget vs actual,
+// financial ratios & KPIs (incl. Altman Z'' and a simplified zakat base).
+// Inserted after reports.js; registered as extra tabs of the reports page.
+// =====================================================================
+const topGroup = (byId, r) => { let x = r; while (x && x.code?.length > 2 && byId[x.parent_id]) x = byId[x.parent_id]; return x?.code?.length === 2 ? x.code : (x?.code || '').slice(0, 1); };
+
+// ---------- cash flow (direct method, from the cash, bank and card accounts) ----------
+const CF_CAT = { document: 'op', payment: 'op', expense: 'op', payroll: 'op', custody: 'op', card_settlement: 'op', stock: 'op', depreciation: 'inv', manual: 'fin', reversal: 'op' };
+const CF_NAME = { document: 'مبيعات ومشتريات نقدية', payment: 'سندات القبض والصرف', expense: 'المصروفات', payroll: 'الرواتب', custody: 'العهد النقدية', card_settlement: 'عمولات الشبكة', stock: 'حركات مخزون', reversal: 'قيود عكسية', depreciation: 'بيع أصول ثابتة', manual: 'قيود يدوية (رأس مال، جاري المالك، قروض…)' };
+async function cfReport(from, to, head) {
+  const accs = (await api.listAccounts()).filter(a => a.is_postable && ['cash', 'bank', 'card_clearing'].includes(a.system_key) || (a.is_postable && a.type === 'asset' && /^110/.test(a.code)));
+  const sts = await Promise.all(accs.map(a => api.accountStatement(a.id, from, to)));
+  const open = sts.reduce((s, r) => s + (r[0]?.balance || 0), 0), close = sts.reduce((s, r) => s + (r.at(-1)?.balance || 0), 0);
+  // internal transfers between cash accounts net to zero, so drop entries that only move money between them
+  const cashIds = new Set(accs.map(a => a.id)), lines = sts.flat().filter(r => r.entry_id);
+  const byEntry = {}; lines.forEach(r => (byEntry[r.entry_id] ||= []).push(r));
+  const g = {}; Object.values(byEntry).forEach(ls => { const net = ls.reduce((s, r) => s + r.debit - r.credit, 0); if (!net && ls.length > 1) return;
+    const st = ls[0].source_type, k = CF_CAT[st] || 'op'; ((g[k] ||= {})[st] ||= { in: 0, out: 0 }); net > 0 ? g[k][st].in += net : g[k][st].out -= net; });
+  const T = k => Object.values(g[k] || {}).reduce((s, x) => s + x.in - x.out, 0);
+  const sec = (k, t) => `<tr class="sec"><td colspan="4">${t}</td></tr>${Object.entries(g[k] || {}).map(([st, x]) => `<tr><td>${esc(CF_NAME[st] || st)}</td><td class="amt num">${x.in ? money(x.in) : '—'}</td><td class="amt num">${x.out ? money(x.out) : '—'}</td><td class="amt num ${x.in - x.out < 0 ? 'down' : ''}">${money(x.in - x.out)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">لا توجد حركات</td></tr>'}
+    <tr class="sub"><td colspan="3">صافي ${t}</td><td class="amt num">${money(T(k))}</td></tr>`;
+  const net = T('op') + T('inv') + T('fin');
+  return head('قائمة التدفقات النقدية', `من <span class="num">${from}</span> إلى <span class="num">${to}</span> — الطريقة المباشرة من حركات الصندوق والبنك والشبكة`) +
+    `<div class="grid g4" style="margin-bottom:16px">${[['النقدية أول الفترة', open], ['التدفق التشغيلي', T('op')], ['صافي التغير', net], ['النقدية آخر الفترة', close]].map(([t, v]) => `<div class="stat"><div class="label">${t}</div><div class="val num ${v < 0 ? 'down' : ''}">${money(v)}</div></div>`).join('')}</div>
+    <div class="tbl-wrap"><table class="rep-tbl"><thead><tr><th>البند</th><th class="amt">داخل</th><th class="amt">خارج</th><th class="amt">الصافي</th></tr></thead><tbody>
+      ${sec('op', 'الأنشطة التشغيلية')}${sec('inv', 'الأنشطة الاستثمارية')}${sec('fin', 'الأنشطة التمويلية والأخرى')}
+      <tr class="grand"><td colspan="3">صافي التغير في النقدية</td><td class="amt num">${money(net)}</td></tr>
+      <tr><td colspan="3">النقدية أول الفترة</td><td class="amt num">${money(open)}</td></tr><tr class="grand"><td colspan="3">النقدية آخر الفترة</td><td class="amt num">${money(close)}</td></tr></tbody></table></div>
+    ${open + net !== close ? '<p class="note warn">يوجد فرق في المطابقة — راجع القيود اليدوية على حسابات النقدية.</p>' : ''}
+    <p class="xs muted" style="margin-top:8px">ملاحظة: شراء الأصول الثابتة بفاتورة مشتريات يظهر ضمن «مبيعات ومشتريات نقدية» إن دُفع فوراً.</p>`;
+}
+
+// ---------- 12-month comparison ----------
+async function cmpReport(_f, _t, head) {
+  const ms = await api.monthlySummary(12);
+  const rows = ms.map(m => ({ ...m, gross: m.revenue - m.cogs, net: m.revenue - m.cogs - m.expenses, label: AR_MONTHS[+m.month.slice(5, 7) - 1] + ' ' + m.month.slice(2, 4) }));
+  const S = k => rows.reduce((s, r) => s + r[k], 0);
+  const best = rows.reduce((b, r) => r.revenue > (b?.revenue ?? -1) ? r : b, null);
+  const avg = rows.length ? S('revenue') / rows.length : 0, last3 = rows.slice(-3), prev3 = rows.slice(-6, -3);
+  const tr = pct(last3.reduce((s, r) => s + r.revenue, 0), prev3.reduce((s, r) => s + r.revenue, 0));
+  return head('التحليل المقارن — آخر 12 شهراً', 'الإيرادات والتكاليف وصافي الربح شهرياً، مع اتجاه آخر 3 أشهر مقابل الثلاثة قبلها') +
+    `<div class="grid g4" style="margin-bottom:16px">${[['إيرادات 12 شهراً', money(S('revenue'))], ['صافي ربح 12 شهراً', money(S('net'))], ['متوسط الإيراد الشهري', money(Math.round(avg))], ['اتجاه آخر 3 أشهر', pctTxt(tr)]].map(([t, v]) => `<div class="stat"><div class="label">${t}</div><div class="val num">${v}</div></div>`).join('')}</div>
+    <div style="margin-bottom:12px">${barChart(rows.map(r => ({ label: r.label, a: r.revenue, b: r.cogs + r.expenses })))}<div class="legend"><span><i class="s1"></i>الإيرادات</span><span><i class="s2"></i>التكاليف والمصروفات</span></div></div>
+    <div class="tbl-wrap"><table class="rep-tbl"><thead><tr><th>الشهر</th><th class="amt">الإيرادات</th><th class="amt m-hide">تكلفة المبيعات</th><th class="amt">مجمل الربح</th><th class="amt m-hide">المصروفات</th><th class="amt">صافي الربح</th><th class="amt m-hide">الهامش</th><th class="amt m-hide">مقبوضات</th><th class="amt m-hide">مدفوعات</th></tr></thead><tbody>
+      ${rows.map(r => `<tr${r === best && r.revenue ? ' class="sec"' : ''}><td>${esc(r.label)}</td><td class="amt num">${money(r.revenue)}</td><td class="amt num m-hide">${money(r.cogs)}</td><td class="amt num">${money(r.gross)}</td><td class="amt num m-hide">${money(r.expenses)}</td><td class="amt num ${r.net < 0 ? 'down' : ''}">${money(r.net)}</td>
+        <td class="amt num m-hide">${r.revenue ? (r.net / r.revenue * 100).toFixed(1) + '%' : '—'}</td><td class="amt num m-hide">${money(r.cash_in)}</td><td class="amt num m-hide">${money(r.cash_out)}</td></tr>`).join('')}
+      <tr class="grand"><td>الإجمالي</td><td class="amt num">${money(S('revenue'))}</td><td class="amt num m-hide">${money(S('cogs'))}</td><td class="amt num">${money(S('gross'))}</td><td class="amt num m-hide">${money(S('expenses'))}</td><td class="amt num">${money(S('net'))}</td><td class="m-hide"></td><td class="amt num m-hide">${money(S('cash_in'))}</td><td class="amt num m-hide">${money(S('cash_out'))}</td></tr></tbody></table></div>
+    ${best?.revenue ? `<p class="xs muted" style="margin-top:8px">أفضل شهر: ${esc(best.label)} بإيرادات ${money(best.revenue)}.</p>` : ''}`;
+}
+
+// ---------- budget vs actual ----------
+async function budgetReport(_f, _t, head) {
+  const y = +(sessionStorage.getItem('budget-y') || riyadhToday().slice(0, 4)), today = riyadhToday(), curM = String(y) < today.slice(0, 4) ? 12 : String(y) > today.slice(0, 4) ? 0 : +today.slice(5, 7);
+  const [accs, bs, act] = await Promise.all([api.listAccounts(), api.listBudgets(y), api.accountBalances(`${y}-01-01`, `${y}-12-31` < today ? `${y}-12-31` : today)]);
+  const B = Object.fromEntries(bs.map(b => [b.account_id, b.amounts.map(Number)])), A = Object.fromEntries(act.map(r => [r.account_id, r]));
+  const list = accs.filter(a => a.is_postable && ['revenue', 'expense'].includes(a.type));
+  const actual = a => { const r = A[a.id]; return r ? (a.type === 'revenue' ? r.credit - r.debit : r.debit - r.credit) : 0; };
+  const editable = can('accounting', 'create');
+  const row = a => { const b = B[a.id] || Array(12).fill(0), yr = b.reduce((s, v) => s + v, 0), ytd = b.slice(0, curM).reduce((s, v) => s + v, 0), ac = actual(a), v = a.type === 'revenue' ? ac - ytd : ytd - ac;
+    return `<tr data-a="${esc(a.id)}"><td><span class="num muted">${esc(a.code)}</span> ${esc(a.name_ar)}</td><td class="amt">${editable ? `<input class="input num" data-bud value="${yr ? money(yr) : ''}" placeholder="0.00" inputmode="decimal" aria-label="موازنة ${esc(a.name_ar)}" style="max-width:150px">` : `<span class="num">${money(yr)}</span>`}</td>
+      <td class="amt num">${money(ytd)}</td><td class="amt num">${money(ac)}</td><td class="amt num ${v < 0 ? 'down' : ''}">${ytd || ac ? money(v) : '—'}</td><td class="m-hide">${ytd ? `<div class="bar"><i style="width:${Math.min(100, ac / ytd * 100).toFixed(0)}%;${ac > ytd && a.type === 'expense' ? 'background:var(--c-danger)' : ''}"></i></div>` : ''}</td></tr>`; };
+  const tot = (type) => { const l = list.filter(a => a.type === type); const ytd = l.reduce((s, a) => s + (B[a.id] || []).slice(0, curM).reduce((x, v) => x + v, 0), 0), ac = l.reduce((s, a) => s + actual(a), 0);
+    return `<tr class="sub"><td>الإجمالي</td><td class="amt num">${money(l.reduce((s, a) => s + (B[a.id] || []).reduce((x, v) => x + v, 0), 0))}</td><td class="amt num">${money(ytd)}</td><td class="amt num">${money(ac)}</td><td class="amt num">${money(type === 'revenue' ? ac - ytd : ytd - ac)}</td><td class="m-hide"></td></tr>`; };
+  setTimeout(() => { const ys = $('#budy'); if (!ys) return; ys.onchange = e => { sessionStorage.setItem('budget-y', e.target.value); location.hash = '#/reports/budget?' + Date.now(); };
+    if ($('#budsave')) $('#budsave').onclick = async e => { const rows = $$('#rep tr[data-a]'); e.target.disabled = true;
+      try { for (const tr of rows) { const inp = $('[data-bud]', tr), v = toHalalas(inp.value || 0); if (!Number.isFinite(v) || v < 0) throw new AppError('مبلغ غير صحيح: ' + inp.value);
+          const old = (B[tr.dataset.a] || []).reduce((s, x) => s + x, 0); if (v === old) continue;
+          const base = Math.floor(v / 12), months = Array.from({ length: 12 }, (_, i) => base + (i < v - base * 12 ? 1 : 0)); await api.saveBudget(y, tr.dataset.a, months); }
+        toast('حُفظت الموازنة'); location.hash = '#/reports/budget?' + Date.now(); } catch (x) { fail(x); e.target.disabled = false; } }; }, 0);
+  const th = `<thead><tr><th>الحساب</th><th class="amt">الموازنة السنوية</th><th class="amt">المستهدف حتى الآن</th><th class="amt">الفعلي</th><th class="amt">الانحراف</th><th class="m-hide"></th></tr></thead>`;
+  return head(`الموازنة التقديرية مقابل الفعلي — ${y}`, `المستهدف حتى نهاية الشهر ${curM} — الموازنة السنوية تُوزّع بالتساوي على 12 شهراً. الانحراف الموجب = أفضل من المستهدف.`) +
+    `<div class="row no-print" style="gap:8px;margin-bottom:12px"><label for="budy">السنة</label><select class="input" id="budy" style="height:38px;width:auto">${[y - 1, y, y + 1].map(v => `<option${v === y ? ' selected' : ''}>${v}</option>`).join('')}</select>
+      ${editable ? '<span class="sp"></span><button class="btn primary" id="budsave">حفظ الموازنة</button>' : ''}</div>
+    <h3 style="margin:8px 0">الإيرادات</h3><div class="tbl-wrap"><table class="rep-tbl">${th}<tbody>${list.filter(a => a.type === 'revenue').map(row).join('')}${tot('revenue')}</tbody></table></div>
+    <h3 style="margin:16px 0 8px">المصروفات والتكاليف</h3><div class="tbl-wrap"><table class="rep-tbl">${th}<tbody>${list.filter(a => a.type === 'expense').map(row).join('')}${tot('expense')}</tbody></table></div>`;
+}
+
+// ---------- ratios, KPIs, Altman Z'', zakat base ----------
+async function kpiReport(_f, to, head) {
+  const y1 = new Date(to + 'T00:00:00'); y1.setFullYear(y1.getFullYear() - 1); y1.setDate(y1.getDate() + 1); const from12 = ymd(y1);
+  const [bal, yr, ar] = await Promise.all([api.accountBalances(to, to), api.accountBalances(from12, to), can('sales') ? api.openDocuments(['tax_invoice', 'simplified_invoice']).catch(() => []) : []]);
+  const byId = Object.fromEntries(bal.map(r => [r.account_id, r])), post = bal.filter(r => r.is_postable), G = r => topGroup(byId, r);
+  const sumBy = (pred, sign = 1) => post.filter(pred).reduce((s, r) => s + sign * r.closing, 0);
+  const CA = sumBy(r => r.type === 'asset' && G(r) === '11'), FA = sumBy(r => r.type === 'asset' && G(r) !== '11'), TA = CA + FA;
+  const CL = sumBy(r => r.type === 'liability' && G(r) === '21', -1), LL = sumBy(r => r.type === 'liability' && G(r) !== '21', -1), TL = CL + LL;
+  const earnAll = -post.filter(r => ['revenue', 'expense'].includes(r.type)).reduce((s, r) => s + r.closing, 0);
+  const EQ = sumBy(r => r.type === 'equity', -1) + earnAll, RE = sumBy(r => r.system_key === 'retained_earnings', -1) + earnAll;
+  const cash = sumBy(r => ['cash', 'bank', 'card_clearing'].includes(r.system_key)), inv = sumBy(r => ['inventory', 'raw_materials', 'wip'].includes(r.system_key));
+  const yp = yr.filter(r => r.is_postable), Y = Object.fromEntries(bal.map(r => [r.account_id, r])), cogsIds = new Set(yp.filter(r => topGroup(Y, r) === '51').map(r => r.account_id));
+  const REV = yp.filter(r => r.type === 'revenue').reduce((s, r) => s + r.credit - r.debit, 0), COGS = yp.filter(r => cogsIds.has(r.account_id)).reduce((s, r) => s + r.debit - r.credit, 0);
+  const EXP = yp.filter(r => r.type === 'expense' && !cogsIds.has(r.account_id)).reduce((s, r) => s + r.debit - r.credit, 0), NET = REV - COGS - EXP;
+  const DEP = yp.filter(r => r.system_key === 'depreciation').reduce((s, r) => s + r.debit - r.credit, 0), EBIT = NET; // no interest/tax lines in this chart
+  const AR = ar.reduce((s, d) => s + d.open, 0);
+  const r2 = (a, b) => b ? a / b : null, f = (v, d = 2) => v == null || !Number.isFinite(v) ? '—' : v.toFixed(d), pc = v => v == null || !Number.isFinite(v) ? '—' : (v * 100).toFixed(1) + '%';
+  // Altman Z'' (non-manufacturing / private firms): 6.56 X1 + 3.26 X2 + 6.72 X3 + 1.05 X4
+  const X1 = r2(CA - CL, TA), X2 = r2(RE, TA), X3 = r2(EBIT, TA), X4 = r2(EQ, TL);
+  const Z = [X1, X2, X3, X4].every(v => v != null && Number.isFinite(v)) ? 6.56 * X1 + 3.26 * X2 + 6.72 * X3 + 1.05 * X4 : null;
+  const zone = Z == null ? ['بيانات غير كافية', 'b-draft'] : Z > 2.6 ? ['منطقة آمنة', 'b-ok'] : Z >= 1.1 ? ['منطقة رمادية — راقب', 'b-warn'] : ['منطقة خطر', 'b-bad'];
+  // simplified zakat base (indicative only): equity + long-term liabilities − net fixed assets; positive net profit already inside equity
+  const zbase = Math.max(0, EQ + LL - Math.max(0, FA)), zakat = Math.round(zbase * 0.025);
+  const kpi = (t, v, hint, cls = '') => `<div class="card stat"><div class="label">${t}</div><div class="val num ${cls}">${v}</div>${hint ? `<div class="xs muted">${hint}</div>` : ''}</div>`;
+  return head('المؤشرات المالية والتحليل', `المركز كما في <span class="num">${to}</span> · الأداء عن 12 شهراً من <span class="num">${from12}</span>`) +
+    `<h3 style="margin:0 0 8px">السيولة</h3><div class="grid g4" style="margin-bottom:16px">
+      ${kpi('نسبة التداول', f(r2(CA, CL)), 'الأصول المتداولة ÷ الخصوم المتداولة — الأفضل فوق 1.5')}${kpi('النسبة السريعة', f(r2(CA - inv, CL)), 'بدون المخزون — الأفضل فوق 1')}
+      ${kpi('النقدية المتاحة', money(cash), 'الصندوق + البنك + الشبكة')}${kpi('رأس المال العامل', money(CA - CL), '', CA - CL < 0 ? 'down' : '')}</div>
+    <h3 style="margin:0 0 8px">الربحية (آخر 12 شهراً)</h3><div class="grid g4" style="margin-bottom:16px">
+      ${kpi('الإيرادات', money(REV))}${kpi('هامش مجمل الربح', pc(r2(REV - COGS, REV)))}${kpi('هامش صافي الربح', pc(r2(NET, REV)), '', NET < 0 ? 'down' : '')}${kpi('العائد على حقوق الملكية', pc(r2(NET, EQ)))}</div>
+    <h3 style="margin:0 0 8px">النشاط والمديونية</h3><div class="grid g4" style="margin-bottom:16px">
+      ${kpi('متوسط فترة التحصيل', REV ? Math.round(AR / (REV / 365)) + ' يوم' : '—', 'كم يوماً يتأخر العملاء في السداد')}${kpi('دوران المخزون', COGS && inv ? f(COGS / inv, 1) + ' مرة' : '—', inv && COGS ? `≈ ${Math.round(365 / (COGS / inv))} يوماً لبيع المخزون` : '')}
+      ${kpi('الديون إلى حقوق الملكية', f(r2(TL, EQ)), 'الأفضل أقل من 1')}${kpi('الإهلاك السنوي', money(DEP))}</div>
+    <div class="grid g2" style="align-items:start"><section class="card"><h3 style="margin-bottom:6px">مؤشر ألتمان Z″ للملاءة المالية</h3>
+        <div class="row" style="gap:12px;align-items:baseline"><b class="num" style="font-size:28px">${f(Z)}</b>${badge(zone)}</div>
+        <table class="rep-tbl" style="margin-top:8px"><tbody>${[['X1 رأس المال العامل ÷ الأصول', X1, 6.56], ['X2 الأرباح المبقاة ÷ الأصول', X2, 3.26], ['X3 الربح التشغيلي ÷ الأصول', X3, 6.72], ['X4 حقوق الملكية ÷ الخصوم', X4, 1.05]].map(([t, v, w]) => `<tr><td>${t}</td><td class="amt num">${f(v, 3)}</td><td class="amt num muted">× ${w}</td></tr>`).join('')}</tbody></table>
+        <p class="xs muted">فوق 2.6 آمن · 1.1–2.6 رمادي · أقل من 1.1 خطر. صيغة Z″ للشركات غير المدرجة.</p></section>
+      <section class="card"><h3 style="margin-bottom:6px">تقدير وعاء الزكاة (مبسّط)</h3><table class="rep-tbl"><tbody>
+        <tr><td>حقوق الملكية (شاملة ربح الفترة)</td><td class="amt num">${money(EQ)}</td></tr><tr><td>+ الخصوم طويلة الأجل</td><td class="amt num">${money(LL)}</td></tr><tr><td>− صافي الأصول الثابتة وغير المتداولة</td><td class="amt num">${money(Math.max(0, FA))}</td></tr>
+        <tr class="sub"><td>الوعاء التقديري</td><td class="amt num">${money(zbase)}</td></tr><tr class="grand"><td>الزكاة التقديرية 2.5%</td><td class="amt num">${money(zakat)}</td></tr></tbody></table>
+        <p class="xs muted">تقدير استرشادي فقط على أساس السنة الهجرية — الإقرار الفعلي يُعدّ وفق لائحة هيئة الزكاة والضريبة والجمارك وبمراجعة محاسبك.</p></section></div>`;
+}
+
+const REPORTS2 = [['cf', 'التدفقات النقدية', cfReport, 'period'], ['cmp', 'التحليل المقارن', cmpReport], ['budget', 'الموازنة التقديرية', budgetReport], ['kpi', 'المؤشرات المالية', kpiReport, 'asof']];
 
 // =====================================================================
 // Point of sale (cashier) and projects / cost centers.
@@ -3326,6 +3462,125 @@ const EXT_ROUTES = [
   ...docRoutes('delivery-notes'),
 ];
 
+// =====================================================================
+// Wave 5: CSV / Excel import (customers, suppliers, items, stock counts),
+// branches with their warehouses and sales. Inserted after ext.js.
+// =====================================================================
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '', delim = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : first.includes('\t') && !first.includes(',') ? '\t' : ',';
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; continue; }
+    if (c === '"') q = true; else if (c === delim) { row.push(cur); cur = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; } else cur += c; }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows.map(r => r.map(c => c.trim())).filter(r => r.some(c => c));
+}
+const readFileText = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(file, 'utf-8'); });
+const normH = h => toLatin(String(h || '')).toLowerCase().replace(/[\s_\-ـ:.]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+// field → accepted header spellings (Arabic and English, normalised)
+const IMPORT_SPEC = {
+  parties: { name: ['الاسم', 'اسمالعميل', 'اسمالمورد', 'name', 'customer', 'supplier', 'العميل', 'المورد'], vat_number: ['الرقمالضريبي', 'vat', 'vatnumber', 'taxnumber'],
+    cr_number: ['السجلالتجاري', 'cr', 'crnumber'], phone: ['الجوال', 'الهاتف', 'رقمالجوال', 'phone', 'mobile'], email: ['البريد', 'البريدالالكتروني', 'email'],
+    city: ['المدينه', 'city'], district: ['الحي', 'district'], street: ['الشارع', 'street'], building_no: ['رقمالمبني', 'building'], postal_code: ['الرمزالبريدي', 'postal', 'zip'],
+    credit_limit: ['حدالائتمان', 'creditlimit'] },
+  items: { name_ar: ['الاسم', 'اسمالصنف', 'الصنف', 'name', 'item', 'namear'], sku: ['الرمز', 'رمزالصنف', 'الكود', 'sku', 'code'], barcode: ['الباركود', 'barcode'],
+    kind: ['النوع', 'kind', 'type'], unit: ['الوحده', 'unit'], sale_price: ['سعرالبيع', 'السعر', 'price', 'saleprice'], avg_cost: ['التكلفه', 'سعرالتكلفه', 'cost', 'avgcost'] },
+  count: { sku: ['الرمز', 'رمزالصنف', 'الكود', 'sku', 'code', 'الباركود', 'barcode'], name: ['الاسم', 'الصنف', 'name', 'item'], qty: ['الكميه', 'الكميهالفعليه', 'qty', 'quantity', 'count'], cost: ['التكلفه', 'تكلفهالوحده', 'cost', 'unitcost'] },
+};
+function mapHeaders(header, spec) { const H = header.map(normH), m = {}; Object.entries(spec).forEach(([f, names]) => { const i = H.findIndex(h => names.includes(h)); if (i >= 0) m[f] = i; }); return m; }
+const ITEM_KIND = v => { const s = normH(v); return ['service', 'خدمه'].includes(s) ? 'service' : ['raw', 'rawmaterial', 'مادهخام', 'خام', 'موادخام'].includes(s) ? 'raw_material' : 'product'; };
+const csvTemplate = (cols, name) => dl([cols], name);
+
+async function importView(qs) {
+  shell('import', loading());
+  const tab = qs?.get('t') || 'customers', T = { customers: ['العملاء', 'sales'], suppliers: ['الموردون', 'purchases'], items: ['الأصناف', 'inventory|sales|purchases'] };
+  if (!T[tab][1].split('|').some(m => can(m, 'create'))) { $('#main').innerHTML = empty('lock', 'ليست لديك صلاحية', 'تحتاج صلاحية الإضافة في هذا القسم.'); return; }
+  const [ps, items] = await Promise.all([tab === 'items' ? [] : api.listParties(), tab === 'items' ? api.listItems() : []]);
+  const COLS = { customers: ['الاسم', 'الرقم الضريبي', 'السجل التجاري', 'الجوال', 'البريد', 'المدينة', 'الحي', 'الشارع', 'رقم المبنى', 'الرمز البريدي', 'حد الائتمان'],
+    suppliers: ['الاسم', 'الرقم الضريبي', 'السجل التجاري', 'الجوال', 'البريد', 'المدينة', 'الحي', 'الشارع', 'رقم المبنى', 'الرمز البريدي'],
+    items: ['الاسم', 'الرمز', 'الباركود', 'النوع (منتج / خدمة / مادة خام)', 'الوحدة', 'سعر البيع', 'التكلفة'] };
+  $('#main').innerHTML = `<div class="page-head"><h1>استيراد البيانات من Excel</h1></div>
+    <div class="tabs">${Object.entries(T).map(([k, [t]]) => `<a href="#/import?t=${k}" class="${k === tab ? 'on' : ''}">${t}</a>`).join('')}</div>
+    <section class="card" style="max-width:860px"><ol style="margin:0 0 12px;padding-inline-start:20px;line-height:1.9">
+      <li>نزّل القالب <button class="btn ghost sm" id="tpl">${icon('down')}قالب ${T[tab][0]} (CSV)</button> أو استخدم ملفك — أول صف أسماء الأعمدة.</li>
+      <li>من Excel: «حفظ باسم» ← <b>CSV UTF-8</b>.</li><li>اختر الملف، راجع المعاينة، ثم اضغط «استيراد».</li></ol>
+      <input type="file" id="csvf" accept=".csv,.txt,text/csv" class="input" aria-label="ملف CSV">
+      <div id="prev" style="margin-top:16px"></div></section>`;
+  $('#tpl').onclick = () => csvTemplate(COLS[tab], 'قالب ' + T[tab][0]);
+  $('#csvf').onchange = async e => { const file = e.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) return toast('الملف أكبر من 2 ميجابايت', 'bad');
+    const rows = parseCSV(await readFileText(file)); if (rows.length < 2) return $('#prev').innerHTML = '<p class="help err">الملف فارغ أو بدون صف عناوين.</p>';
+    const spec = tab === 'items' ? IMPORT_SPEC.items : IMPORT_SPEC.parties, m = mapHeaders(rows[0], spec), nameKey = tab === 'items' ? 'name_ar' : 'name';
+    if (m[nameKey] == null) return $('#prev').innerHTML = `<p class="help err">لم أجد عمود «الاسم». الأعمدة في ملفك: ${esc(rows[0].join('، '))}</p>`;
+    const existing = new Set((tab === 'items' ? items.map(i => i.sku || '') : ps.map(p => p.vat_number || '')).filter(Boolean)), names = new Set((tab === 'items' ? items.map(i => i.name_ar) : ps.map(p => p.name)));
+    const recs = rows.slice(1).map((r, i) => { const o = {}; Object.entries(m).forEach(([f, j]) => o[f] = r[j] ?? ''); const errs = [];
+      if (!o[nameKey]) errs.push('بدون اسم');
+      if (tab !== 'items') { ['vat_number', 'cr_number', 'phone', 'building_no', 'postal_code'].forEach(k => { if (o[k]) o[k] = toLatin(o[k]).replace(/\s/g, ''); });
+        if (o.vat_number && !VAT_RE.test(o.vat_number)) errs.push('رقم ضريبي غير صحيح'); if (o.email && !/^\S+@\S+\.\S+$/.test(o.email)) errs.push('بريد غير صحيح');
+        if (o.credit_limit) { o.credit_limit = toHalalas(o.credit_limit); if (!(o.credit_limit >= 0)) errs.push('حد ائتمان غير صحيح'); } else delete o.credit_limit;
+        if (o.vat_number && existing.has(o.vat_number) || names.has(o[nameKey])) errs.push('موجود مسبقاً'); }
+      else { o.kind = ITEM_KIND(o.kind); o.sale_price = toHalalas(o.sale_price || 0); if (!(o.sale_price >= 0)) errs.push('سعر غير صحيح');
+        if (o.avg_cost) { o.avg_cost = toHalalas(o.avg_cost); if (!(o.avg_cost >= 0)) errs.push('تكلفة غير صحيحة'); } else delete o.avg_cost;
+        if (o.sku && existing.has(o.sku) || names.has(o.name_ar)) errs.push('موجود مسبقاً'); o.track_stock = o.kind !== 'service'; o.unit = o.unit || 'unit'; }
+      Object.keys(o).forEach(k => { if (o[k] === '') delete o[k]; }); return { i: i + 2, o, errs }; });
+    const good = recs.filter(r => !r.errs.length), fields = Object.keys(m);
+    $('#prev').innerHTML = `<p><b class="num">${good.length}</b> صف جاهز للاستيراد${recs.length - good.length ? ` · <span class="down">${recs.length - good.length} صف فيه مشكلة (يُتخطّى)</span>` : ''}</p>
+      <div class="tbl-wrap" style="max-height:360px;overflow:auto"><table class="rep-tbl"><thead><tr><th>#</th>${fields.map(f => `<th>${esc(rows[0][m[f]])}</th>`).join('')}<th>الحالة</th></tr></thead><tbody>
+        ${recs.slice(0, 200).map(r => `<tr><td class="num">${r.i}</td>${fields.map(f => `<td>${esc(['sale_price', 'avg_cost', 'credit_limit'].includes(f) && r.o[f] != null ? money(r.o[f]) : r.o[f] ?? '')}</td>`).join('')}<td>${r.errs.length ? badge([r.errs.join('، '), 'b-bad']) : badge(['جاهز', 'b-ok'])}</td></tr>`).join('')}</tbody></table></div>
+      ${good.length ? `<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" id="doimp">استيراد ${good.length} سجل</button></div><p class="muted xs" id="impst"></p>` : ''}`;
+    if ($('#doimp')) $('#doimp').onclick = async ev => { ev.target.disabled = true; let n = 0; const failed = [];
+      for (const r of good) { try { if (tab === 'items') await api.saveItem(r.o); else await api.saveParty({ ...r.o, kind: tab === 'customers' ? 'customer' : 'supplier' }); n++; }
+        catch (x) { failed.push(`صف ${r.i}: ${x.message}`); } $('#impst').textContent = `تم ${n} من ${good.length}…`; }
+      toast(`استُورد ${n} سجل` + (failed.length ? ` — تعذّر ${failed.length}` : ''), failed.length ? 'warn' : 'ok');
+      $('#impst').innerHTML = failed.length ? `<span class="down">${esc(failed.slice(0, 10).join(' · '))}</span>` : `اكتمل الاستيراد. <a href="#/${tab}">فتح ${T[tab][0]} ←</a>`; };
+  };
+}
+
+// stock-count sheet: export current balances to count on paper / Excel, import the counted quantities back
+function stockSheetExport(stock, q, wh, whName) {
+  dl([['الرمز', 'الاسم', 'الوحدة', 'رصيد النظام', 'الكمية الفعلية'], ...stock.map(s => [s.sku || '', s.name_ar, s.unit, fq(q[s.id + ':' + wh] || 0), ''])], `ورقة جرد ${whName} ${riyadhToday()}`);
+}
+async function stockSheetImport(file, stock) {
+  const rows = parseCSV(await readFileText(file)); if (rows.length < 2) throw new AppError('الملف فارغ');
+  const m = mapHeaders(rows[0], IMPORT_SPEC.count); if (m.qty == null) throw new AppError('لم أجد عمود «الكمية» أو «الكمية الفعلية»');
+  const bySku = Object.fromEntries(stock.filter(s => s.sku).map(s => [toLatin(s.sku).toLowerCase(), s])), byBar = Object.fromEntries(stock.filter(s => s.barcode).map(s => [s.barcode, s])), byName = Object.fromEntries(stock.map(s => [s.name_ar.trim(), s]));
+  const lines = [], missing = [];
+  rows.slice(1).forEach(r => { const qv = r[m.qty]; if (qv === '' || qv == null) return; const sku = m.sku != null ? toLatin(r[m.sku] || '').toLowerCase() : '';
+    const it = bySku[sku] || byBar[r[m.sku]] || (m.name != null ? byName[(r[m.name] || '').trim()] : null);
+    if (!it) { missing.push(r[m.sku] || r[m.name] || '?'); return; }
+    const qty = Number(toLatin(qv).replace(/,/g, '')); if (!Number.isFinite(qty) || qty < 0) { missing.push((r[m.sku] || r[m.name]) + ' (كمية)'); return; }
+    lines.push({ item_id: it.id, qty, unit_cost: m.cost != null && r[m.cost] ? toHalalas(r[m.cost]) : null }); });
+  return { lines, missing };
+}
+
+// ---------- branches ----------
+async function branchesView() {
+  shell('branches', loading()); const editable = can('settings', 'create');
+  const y = riyadhToday().slice(0, 4), m = riyadhToday().slice(0, 7);
+  const [bs, whs, docs] = await Promise.all([api.listBranches(), api.listWarehouses(), can('sales') ? api.listDocuments(['tax_invoice', 'simplified_invoice', 'credit_note']).catch(() => []) : []]);
+  const posted = docs.filter(d => d.status === 'posted'), S = (b, pre) => posted.filter(d => d.branch_id === b && d.issue_date.startsWith(pre)).reduce((s, d) => s + (d.kind === 'credit_note' ? -1 : 1) * Number(d.subtotal), 0);
+  $('#main').innerHTML = `<div class="page-head"><h1>الفروع</h1>${editable ? `<button class="btn primary" id="newb">${icon('plus')}فرع جديد</button>` : ''}</div>
+    <p class="muted" style="margin:-8px 0 16px">لكل فرع مستودعاته؛ الفاتورة تُنسب لفرع المستودع الذي تُصرف منه. لنقل بضاعة بين الفروع استخدم <a href="#/stock/new?kind=transfer">تحويل بين مستودعات</a>.</p>
+    <div class="grid g3">${bs.map(b => { const w = whs.filter(x => x.branch_id === b.id); return `<section class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">${esc(b.name)}</h3>${editable ? `<button class="btn ghost sm" data-eb="${esc(b.id)}">تعديل</button>` : ''}</div>
+      <p class="xs muted" style="margin:4px 0 10px">${esc([b.building_no, b.street, b.city].filter(Boolean).join('، ') || '—')}</p>
+      ${can('sales') ? `<dl class="kv"><dt>مبيعات هذا الشهر</dt><dd class="num">${money(S(b.id, m))}</dd><dt>مبيعات ${y}</dt><dd class="num">${money(S(b.id, y))}</dd></dl>` : ''}
+      <p class="xs" style="margin-top:8px"><b>المستودعات:</b> ${w.map(x => esc(x.name)).join('، ') || '<span class="muted">لا يوجد — أضف مستودعاً من صفحة المستودعات</span>'}</p></section>`; }).join('')}</div>`;
+  const open = b => { b = b || {}; drawer(b.id ? 'تعديل فرع' : 'فرع جديد', `${field('name', 'اسم الفرع', { req: true, value: b.name || '', help: 'مثل: فرع جدة، المعرض، المصنع' })}
+      <div class="form-grid">${field('city', 'المدينة', { value: b.city || '' })}${field('street', 'الشارع', { value: b.street || '' })}${field('building_no', 'رقم المبنى', { value: b.building_no || '', attrs: 'dir="ltr" inputmode="numeric" maxlength="4"' })}${field('postal_code', 'الرمز البريدي', { value: b.postal_code || '', attrs: 'dir="ltr" inputmode="numeric" maxlength="5"' })}</div>
+      ${!b.id ? `<label class="row" style="gap:8px"><input type="checkbox" name="mkwh" checked> إنشاء مستودع للفرع تلقائياً</label>` : ''}`,
+    async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); ['building_no', 'postal_code'].forEach(k => v[k] = toLatin(v[k] || ''));
+      const nb = await api.saveBranch({ ...(b.id ? { id: b.id } : {}), name: v.name.trim(), city: v.city || null, street: v.street || null, building_no: v.building_no || null, postal_code: v.postal_code || null });
+      if (!b.id && v.mkwh) await api.saveWarehouse({ name: 'مستودع ' + v.name.trim(), kind: 'general', branch_id: nb.id });
+      toast('حُفظ الفرع'); branchesView(); }); };
+  if ($('#newb')) $('#newb').onclick = () => open(null);
+  $$('[data-eb]').forEach(x => x.onclick = () => open(bs.find(b => b.id === x.dataset.eb)));
+}
+
+const EXT2_ROUTES = [
+  [/^#\/import(\?.*)?$/, gate('import', 'الاستيراد', 'sales|purchases|inventory', m => importView(new URLSearchParams((m[1] || '').slice(1))))],
+  [/^#\/branches$/, gate('branches', 'الفروع', 'settings|sales|inventory', branchesView)],
+];
+
 
 // ---------- router ----------
 const stub = (key, title, what) => () => { shell(key, `<div class="page-head"><h1>${esc(title)}</h1></div>${empty('box', 'قيد البناء', what)}`); };
@@ -3340,6 +3595,7 @@ const ROUTES = [
   ...POS_ROUTES,
   ...REPORT_ROUTES,
   ...EXT_ROUTES,
+  ...EXT2_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

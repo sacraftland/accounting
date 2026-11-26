@@ -411,6 +411,8 @@ const SupabaseAPI = (cfg) => {
     async postManualEntry(date, memo, lines) { return ok(await sb.rpc('post_manual_entry', { p_org: await orgId(), p_date: date, p_memo: memo, p_lines: lines })); },
     async reverseEntry(id, date) { return ok(await sb.rpc('reverse_entry', { e: id, on_date: date })); },
     // ---------- warehouses & stock ----------
+    async listBranches() { return ok(await sb.from('branches').select('*').eq('org_id', await orgId()).order('created_at')); },
+    async saveBranch(b) { const row = { ...b, org_id: await orgId() }; return b.id ? ok(await sb.from('branches').update(row).eq('id', b.id).select().single()) : ok(await sb.from('branches').insert(row).select().single()); },
     async listWarehouses() { return ok(await sb.from('warehouses').select('*').eq('org_id', await orgId()).order('created_at')); },
     async saveWarehouse(w) { const o = await orgId(); if (!w.branch_id) w = { ...w, branch_id: ok(await sb.from('branches').select('id').eq('org_id', o).limit(1).single()).id };
       return ok(await sb.from('warehouses').upsert(nulls({ ...w, org_id: o })).select().single()); },

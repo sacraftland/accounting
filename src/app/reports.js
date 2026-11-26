@@ -32,18 +32,19 @@ function tableToCsv(tbl, name) {
 const REPORTS = [['pl', 'قائمة الدخل'], ['bs', 'المركز المالي'], ['vat', 'الإقرار الضريبي'], ['aging', 'أعمار الذمم'], ['stock', 'تقييم المخزون'], ['mfg', 'تقرير الإنتاج']];
 async function reportsView(which, qs) {
   shell('reports', loading());
-  const tab = REPORTS.some(r => r[0] === which) ? which : 'pl';
-  const presets = periodPresets(), def = tab === 'vat' ? 'last-q' : tab === 'bs' ? 'this-y' : 'this-month';
+  const ALL = [...REPORTS, ...REPORTS2.map(r => [r[0], r[1]])], asOf = ['bs', 'kpi'];
+  const tab = ALL.some(r => r[0] === which) ? which : 'pl';
+  const presets = periodPresets(), def = tab === 'vat' ? 'last-q' : asOf.includes(tab) ? 'this-y' : 'this-month';
   const pk = qs?.get('p') || sessionStorage.getItem('rep-p-' + tab) || def;
   const pr = presets.find(p => p[0] === pk);
   const from = qs?.get('from') || pr?.[2] || presets[0][2], to = qs?.get('to') || pr?.[3] || presets[0][3];
-  const needsPeriod = !['aging', 'stock'].includes(tab);
+  const needsPeriod = !['aging', 'stock', 'cmp', 'budget'].includes(tab);
   $('#main').innerHTML = `<div class="page-head no-print"><h1>التقارير</h1><button class="btn secondary" id="csv">${icon('down')}تصدير Excel (CSV)</button><button class="btn secondary" onclick="window.print()">${icon('down')}طباعة / PDF</button></div>
-    <div class="tabs no-print" role="tablist">${REPORTS.map(([k, t]) => `<a role="tab" class="${k === tab ? 'on' : ''}" aria-selected="${k === tab}" href="#/reports/${k}">${t}</a>`).join('')}</div>
+    <div class="tabs no-print" role="tablist">${ALL.map(([k, t]) => `<a role="tab" class="${k === tab ? 'on' : ''}" aria-selected="${k === tab}" href="#/reports/${k}">${t}</a>`).join('')}</div>
     ${needsPeriod ? `<form class="row no-print" id="perf" style="flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:flex-end">
       <div class="field" style="margin:0"><label for="f-preset">الفترة</label><select class="input" id="f-preset" style="height:38px">${presets.map(([k, t]) => `<option value="${k}"${k === pk ? ' selected' : ''}>${t}</option>`).join('')}<option value="custom"${!pr ? ' selected' : ''}>فترة مخصصة</option></select></div>
-      ${tab !== 'bs' ? `<div class="field" style="margin:0"><label for="f-from">من</label><input class="input" type="date" id="f-from" value="${esc(from)}" style="height:38px"></div>` : ''}
-      <div class="field" style="margin:0"><label for="f-to">${tab === 'bs' ? 'كما في تاريخ' : 'إلى'}</label><input class="input" type="date" id="f-to" value="${esc(to)}" style="height:38px"></div>
+      ${!asOf.includes(tab) ? `<div class="field" style="margin:0"><label for="f-from">من</label><input class="input" type="date" id="f-from" value="${esc(from)}" style="height:38px"></div>` : ''}
+      <div class="field" style="margin:0"><label for="f-to">${asOf.includes(tab) ? 'كما في تاريخ' : 'إلى'}</label><input class="input" type="date" id="f-to" value="${esc(to)}" style="height:38px"></div>
       <button class="btn primary" type="submit">عرض</button></form>` : ''}
     <section class="card" id="rep">${loading()}</section>`;
   if (needsPeriod) {
@@ -51,9 +52,9 @@ async function reportsView(which, qs) {
     $('#perf').onsubmit = e => { e.preventDefault(); sessionStorage.removeItem('rep-p-' + tab); location.hash = `#/reports/${tab}?p=custom&from=${$('#f-from')?.value || from}&to=${$('#f-to').value}`; };
   }
   const head = (title, sub) => `<div class="rep-head"><b style="font-size:18px">${esc(ORG.name_ar)}</b>${ORG.vat_number ? ` <span class="muted xs">· الرقم الضريبي <span class="num">${esc(ORG.vat_number)}</span></span>` : ''}<h2 style="margin:4px 0">${title}</h2><p class="muted" style="margin:0 0 16px">${sub}</p></div>`;
-  const R = { pl: plReport, bs: bsReport, vat: vatReport, aging: agingReport, stock: stockReport, mfg: mfgReport }[tab];
+  const R = { pl: plReport, bs: bsReport, vat: vatReport, aging: agingReport, stock: stockReport, mfg: mfgReport, ...Object.fromEntries(REPORTS2.map(r => [r[0], r[2]])) }[tab];
   $('#rep').innerHTML = await R(from, to, head);
-  $('#csv').onclick = () => { const t = $('#rep table'); if (t) tableToCsv(t, (REPORTS.find(r => r[0] === tab)[1]) + ' ' + (needsPeriod ? from + '_' + to : riyadhToday())); else toast('لا يوجد جدول للتصدير', 'warn'); };
+  $('#csv').onclick = () => { const t = $('#rep table'); if (t) tableToCsv(t, (ALL.find(r => r[0] === tab)[1]) + ' ' + (needsPeriod ? from + '_' + to : riyadhToday())); else toast('لا يوجد جدول للتصدير', 'warn'); };
 }
 
 const groupCode = (rows, r) => { const byId = Object.fromEntries(rows.map(x => [x.account_id, x])); return byId[r.parent_id]; };
