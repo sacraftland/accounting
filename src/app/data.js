@@ -183,6 +183,7 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/WAGES_MORE_THAN_OWED/i, 'المبلغ أكبر من الأجور المستحقة للعامل'], [/employees_casual_rate/i, 'أدخل الأجر اليومي أو أجر الساعة للعامل'],
   [/RETURN_MORE_THAN_ISSUED/i, 'لا يمكن إرجاع أكثر مما صُرف للمشروع'], [/ISSUE_PROJECT/i, 'اختر المشروع'], [/ISSUE_SERVICE/i, 'الخدمات لا تُصرف من المخزون'], [/TIMESHEET_POSTED/i, 'الساعات المرحّلة لا تُعدَّل'],
   [/TASK_DATES/i, 'تاريخ الاستحقاق قبل تاريخ البداية'], [/PROJECT_CODE/i, 'رمز المشروع مستخدم'], [/PROJECT_NAME/i, 'أدخل رمز المشروع واسمه'], [/cost_centers_dates/i, 'تاريخ التسليم قبل تاريخ البداية'],
   [/PORTAL_INVALID/i, 'الرابط غير صالح أو أُلغي'], [/TRIP_VAN/i, 'اختر سيارة المندوب'], [/TRIP_OPEN/i, 'لهذه السيارة رحلة مفتوحة — أغلقها أولاً'], [/TRIP_CLOSED/i, 'الرحلة مغلقة'],
@@ -407,7 +408,7 @@ const SupabaseAPI = (cfg) => {
     async deleteProjectMaterial(id) { ok(await sb.from('project_materials').delete().eq('id', id)); },
     async projectStock(cc) { return ok(await sb.from('stock_docs').select('id,kind,number,doc_date,status,from_warehouse_id,to_warehouse_id,stock_doc_lines(item_id,qty,unit_cost)').eq('org_id', await orgId()).eq('cost_center_id', cc).in('kind', ['issue', 'issue_return']).order('doc_date', { ascending: false }))
       .map(d => ({ ...d, stock_doc_lines: d.stock_doc_lines.map(l => ({ ...l, qty: Number(l.qty), unit_cost: Number(l.unit_cost || 0) })) })); },
-    async listWorkers() { return ok(await sb.rpc('list_workers', { p_org: await orgId() })).map(w => ({ ...w, hour_rate: w.hour_rate == null ? null : Number(w.hour_rate) })); },
+    async listWorkers() { return ok(await sb.rpc('list_workers', { p_org: await orgId() })).map(w => ({ ...w, hour_rate: w.hour_rate == null ? null : Number(w.hour_rate), daily_rate: w.daily_rate == null ? null : Number(w.daily_rate), employment_type: w.employment_type || 'monthly' })); },
     async listTimesheets(cc) { return ok(await sb.from('timesheets').select('*').eq('cost_center_id', cc).order('work_date', { ascending: false }).order('created_at', { ascending: false }))
       .map(t => ({ ...t, hours: Number(t.hours), rate: Number(t.rate), amount: Number(t.amount) })); },
     async addTimesheets(rows) { const o = await orgId(); return ok(await sb.from('timesheets').insert(rows.map(r => ({ ...r, org_id: o }))).select()); },
@@ -520,7 +521,10 @@ const SupabaseAPI = (cfg) => {
     async listEvaluations() { return ok(await sb.from('evaluations').select('*, employees(full_name)').eq('org_id', await orgId()).order('eval_date', { ascending: false })); },
     async saveEvaluation(e) { return ok(await sb.from('evaluations').insert({ ...e, org_id: await orgId() }).select().single()); },
     // ---- HR & payroll ----
-    async listEmployees() { return ok(await sb.from('employees').select('*').eq('org_id', await orgId()).order('full_name')); },
+    async listEmployees() { return ok(await sb.from('employees').select('*').eq('org_id', await orgId()).order('full_name')).map(e => ({ ...e, basic_salary: Number(e.basic_salary), housing_allowance: Number(e.housing_allowance), transport_allowance: Number(e.transport_allowance),
+      hourly_rate: e.hourly_rate == null ? null : Number(e.hourly_rate), daily_rate: e.daily_rate == null ? null : Number(e.daily_rate), employment_type: e.employment_type || 'monthly' })); },
+    async casualBalances() { return ok(await sb.rpc('casual_balances', { p_org: await orgId() })).map(r => ({ ...r, earned: Number(r.earned), paid: Number(r.paid), owed: Number(r.owed) })); },
+    async payCasual(emp, amount, cash, date, memo) { return ok(await sb.rpc('pay_casual', { p_org: await orgId(), p_emp: emp, p_amount: amount, p_cash: cash, p_date: date, p_memo: memo || null })); },
     async saveEmployee(e) { const o = await orgId(); const row = { ...e, org_id: o };
       return e.id ? ok(await sb.from('employees').update(row).eq('id', e.id).select().single()) : ok(await sb.from('employees').insert(row).select().single()); },
     async listPayrollRuns() { return ok(await sb.from('payroll_runs').select('*').eq('org_id', await orgId()).order('period_month', { ascending: false })); },

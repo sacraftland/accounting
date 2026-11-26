@@ -212,14 +212,14 @@ async function dashInsights() {
 async function employeesView() {
   shell('employees', loading()); const [es, ccs] = await Promise.all([api.listEmployees(), api.listCostCenters()]);
   const act = es.filter(e => e.status !== 'terminated');
-  const total = act.reduce((s, e) => s + e.basic_salary + e.housing_allowance + e.transport_allowance + Object.values(e.other_allowances || {}).reduce((a, v) => a + (Number(v) || 0), 0), 0);
+  const total = act.filter(e => e.employment_type === 'monthly').reduce((s, e) => s + e.basic_salary + e.housing_allowance + e.transport_allowance + Object.values(e.other_allowances || {}).reduce((a, v) => a + (Number(v) || 0), 0), 0);
   $('#main').innerHTML = `<div class="page-head"><h1>الموظفون</h1>${can('hr', 'create') ? `<button class="btn primary" id="newe">${icon('plus')}موظف جديد</button>` : ''}<a class="btn secondary" href="#/payroll">مسيرات الرواتب</a></div>
     <div class="grid g3" style="margin-bottom:20px"><div class="card stat"><div class="label">الموظفون النشطون</div><div class="val num">${act.length}</div><div class="xs muted">${act.filter(e => e.is_saudi).length} سعودي · ${act.filter(e => !e.is_saudi).length} غير سعودي</div></div>
       <div class="card stat"><div class="label">إجمالي الرواتب الشهرية</div><div class="val num">${money(total)}</div></div>
       <div class="card stat"><div class="label">نسبة السعودة</div><div class="val num">${act.length ? (act.filter(e => e.is_saudi).length / act.length * 100).toFixed(0) + '%' : '—'}</div></div></div>
     ${es.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الاسم</th><th>المسمى</th><th>الجنسية</th><th>تاريخ المباشرة</th><th class="amt">الراتب الأساسي</th><th class="amt">الإجمالي</th><th>الحالة</th><th></th></tr></thead><tbody>
-      ${es.map(e => `<tr><td><b>${esc(e.full_name)}</b></td><td class="m-sub">${esc(e.job_title || '')}</td><td class="m-hide">${e.is_saudi ? 'سعودي' : 'غير سعودي'}</td><td class="num m-hide">${esc(e.hire_date)}</td>
-        <td class="amt num">${money(e.basic_salary)}</td><td class="amt num m-hide">${money(e.basic_salary + e.housing_allowance + e.transport_allowance + Object.values(e.other_allowances || {}).reduce((a, v) => a + (Number(v) || 0), 0))}</td>
+      ${es.map(e => `<tr><td><b>${esc(e.full_name)}</b>${e.employment_type !== 'monthly' ? ` <span class="chip">${e.employment_type === 'daily' ? 'يومية' : 'بالساعة'}</span>` : ''}</td><td class="m-sub">${esc(e.job_title || '')}</td><td class="m-hide">${e.is_saudi ? 'سعودي' : 'غير سعودي'}</td><td class="num m-hide">${esc(e.hire_date)}</td>
+        <td class="amt num">${e.employment_type === 'daily' ? `${money(e.daily_rate)} <span class="xs muted">/يوم</span>` : e.employment_type === 'hourly' ? `${money(e.hourly_rate)} <span class="xs muted">/ساعة</span>` : money(e.basic_salary)}</td><td class="amt num m-hide">${money(e.basic_salary + e.housing_allowance + e.transport_allowance + Object.values(e.other_allowances || {}).reduce((a, v) => a + (Number(v) || 0), 0))}</td>
         <td>${badge(e.status === 'active' ? ['على رأس العمل', 'b-ok'] : e.status === 'on_leave' ? ['إجازة', 'b-warn'] : ['منتهي', 'b-draft'])}</td><td>${can('hr', 'create') ? `<button class="btn ghost sm" data-edit="${esc(e.id)}">تعديل</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
     : empty('users', 'لا يوجد موظفون بعد', 'أضف موظفيك برواتبهم وبدلاتهم، ويُحسب مسير الرواتب والتأمينات ونهاية الخدمة تلقائياً كل شهر.', can('hr', 'create') ? `<button class="btn primary" id="newe2">${icon('plus')}إضافة موظف</button>` : '')}`;
   const open = e => employeeDrawer(e, ccs);
@@ -233,26 +233,30 @@ function employeeDrawer(e, ccs) {
     ${field('full_name', 'الاسم الكامل', { req: true, value: e.full_name || '' })}
     <div class="form-grid">${field('job_title', 'المسمى الوظيفي', { value: e.job_title || '', help: 'مثل: فني لحام، محاسب' })}${select('is_saudi', 'الجنسية', [['1', 'سعودي'], ['0', 'غير سعودي']], e.is_saudi ? '1' : '0')}
       ${field('national_id', 'رقم الهوية / الإقامة', { value: e.national_id || '', attrs: 'dir="ltr" inputmode="numeric" maxlength="10"' })}${field('phone', 'الجوال', { value: e.phone || '', attrs: 'dir="ltr" inputmode="tel"' })}
+      ${select('employment_type', 'نوع التوظيف', [['monthly', 'موظف شهري (في مسير الرواتب)'], ['daily', 'عامل يومية'], ['hourly', 'عامل بالساعة']], e.employment_type || 'monthly')}
       ${field('hire_date', 'تاريخ المباشرة', { type: 'date', value: e.hire_date, req: true })}${select('status', 'الحالة', [['active', 'على رأس العمل'], ['on_leave', 'في إجازة'], ['terminated', 'منتهي الخدمة']], e.status)}</div>
-    <fieldset><legend>الراتب الشهري (ر.س)</legend><div class="form-grid">
+    <fieldset id="casfs"><legend>الأجر</legend><div class="form-grid">${field('daily_rate', 'الأجر اليومي (ر.س)', { type: 'money', value: e.daily_rate ? money(e.daily_rate) : '', help: 'يوم العمل = 8 ساعات' })}${field('casual_rate', 'أجر الساعة (ر.س)', { type: 'money', value: e.employment_type === 'hourly' && e.hourly_rate ? money(e.hourly_rate) : '' })}</div>
+      <p class="help">العامل باليومية أو بالساعة لا يدخل مسير الرواتب الشهري — يُستحق أجره بالساعات المسجلة على المشاريع، ويُصرف له من صفحة المشروع.</p></fieldset>
+    <fieldset id="salfs"><legend>الراتب الشهري (ر.س)</legend><div class="form-grid">
       ${field('basic_salary', 'الأساسي', { type: 'money', req: true, value: e.basic_salary != null ? money(e.basic_salary) : '' })}${field('housing_allowance', 'بدل السكن', { type: 'money', value: e.housing_allowance ? money(e.housing_allowance) : '', help: 'عادة 25% من الأساسي' })}
       ${field('transport_allowance', 'بدل النقل', { type: 'money', value: e.transport_allowance ? money(e.transport_allowance) : '' })}${field('other', 'بدلات أخرى', { type: 'money', value: oth.length ? money(oth.reduce((a, [, v]) => a + Number(v), 0)) : '', help: 'طعام، طبيعة عمل…' })}</div>
       <label class="row" style="gap:8px"><input type="checkbox" name="gosi_enrolled" ${e.gosi_enrolled ? 'checked' : ''}> مسجّل في التأمينات الاجتماعية</label>
       <p class="help" id="gosihint"></p></fieldset>
     ${field('iban', 'الآيبان (لتحويل الراتب)', { value: e.iban || '', attrs: 'dir="ltr" maxlength="34" placeholder="SA…"' })}
-    <fieldset><legend>تكلفة ساعة العمل في المشاريع</legend><div class="form-grid">
+    <fieldset id="ratefs"><legend>تكلفة ساعة العمل في المشاريع</legend><div class="form-grid">
       ${select('rate_mode', 'طريقة الحساب', [['auto', 'تلقائي من الراتب'], ['manual', 'أدخلها يدوياً']], e.hourly_rate != null ? 'manual' : 'auto')}
       ${field('hourly_rate', 'تكلفة الساعة (ر.س)', { type: 'money', value: e.hourly_rate != null ? money(e.hourly_rate) : '' })}</div><p class="help" id="ratehint"></p></fieldset>
     ${ccs.length ? `<div class="field"><label for="f-cost_center_id">مركز التكلفة / المشروع</label><select class="input" id="f-cost_center_id" name="cost_center_id">${optList(ccs.map(c => [c.id, c.name]), e.cost_center_id, '— بدون —')}</select></div>` : ''}
     ${e.status === 'terminated' || e.end_date ? field('end_date', 'تاريخ انتهاء الخدمة', { type: 'date', value: e.end_date || '' }) : ''}`,
     async v => { const n = k => { const x = toHalalas(v[k] || 0); if (!Number.isFinite(x) || x < 0) throw new AppError('تحقق من مبالغ الراتب'); return x; };
-      if (!v.full_name?.trim()) throw new AppError('الاسم مطلوب'); const basic = n('basic_salary'); if (!(basic > 0)) throw new AppError('الراتب الأساسي مطلوب');
+      if (!v.full_name?.trim()) throw new AppError('الاسم مطلوب'); const et = v.employment_type || 'monthly', basic = et === 'monthly' ? n('basic_salary') : 0; if (et === 'monthly' && !(basic > 0)) throw new AppError('الراتب الأساسي مطلوب');
+      const dr = et === 'daily' ? toHalalas(v.daily_rate || 0) : null, cr = et === 'hourly' ? toHalalas(v.casual_rate || 0) : null; if (et === 'daily' && !(dr > 0)) throw new AppError('أدخل الأجر اليومي'); if (et === 'hourly' && !(cr > 0)) throw new AppError('أدخل أجر الساعة');
       const iban = (v.iban || '').replace(/\s/g, '').toUpperCase(); if (iban && !/^SA\d{22}$/.test(iban)) throw new AppError('الآيبان السعودي يبدأ بـ SA ويتكون من 24 خانة');
       const other = n('other');
       await api.saveEmployee({ ...(e.id ? { id: e.id } : {}), full_name: v.full_name.trim(), job_title: v.job_title || null, is_saudi: v.is_saudi === '1', national_id: toLatin(v.national_id) || null, phone: toLatin(v.phone) || null,
-        hire_date: v.hire_date, status: v.status, basic_salary: basic, housing_allowance: n('housing_allowance'), transport_allowance: n('transport_allowance'), other_allowances: other ? { other } : {},
-        hourly_rate: v.rate_mode === 'manual' ? (() => { const r = toHalalas(v.hourly_rate || 0); if (!(r > 0)) throw new AppError('أدخل تكلفة الساعة'); return r; })() : null,
-        gosi_enrolled: !!v.gosi_enrolled, iban: iban || null, cost_center_id: v.cost_center_id || null, end_date: v.status === 'terminated' ? (v.end_date || riyadhToday()) : (v.end_date || null) });
+        hire_date: v.hire_date, status: v.status, employment_type: et, daily_rate: dr, basic_salary: basic, housing_allowance: et === 'monthly' ? n('housing_allowance') : 0, transport_allowance: et === 'monthly' ? n('transport_allowance') : 0, other_allowances: et === 'monthly' && other ? { other } : {},
+        hourly_rate: et === 'hourly' ? cr : et === 'daily' ? null : v.rate_mode === 'manual' ? (() => { const r = toHalalas(v.hourly_rate || 0); if (!(r > 0)) throw new AppError('أدخل تكلفة الساعة'); return r; })() : null,
+        gosi_enrolled: et === 'monthly' && !!v.gosi_enrolled, iban: iban || null, cost_center_id: v.cost_center_id || null, end_date: v.status === 'terminated' ? (v.end_date || riyadhToday()) : (v.end_date || null) });
       toast('تم حفظ الموظف'); employeesView(); });
   const hint = () => { const b = toHalalas($('#f-basic_salary').value || 0) || 0, h = toHalalas($('#f-housing_allowance').value || 0) || 0, base = Math.min(b + h, 4500000), sa = $('#f-is_saudi').value === '1';
     $('#gosihint').textContent = $('[name=gosi_enrolled]').checked ? (sa ? `التأمينات: على الموظف ${money(base * 0.0975)} · على المنشأة ${money(base * 0.1175)}` : `التأمينات (أخطار مهنية): على المنشأة ${money(base * 0.02)}`) : ''; };
@@ -261,6 +265,8 @@ function employeeDrawer(e, ccs) {
     $('#f-hourly_rate').closest('.field').hidden = !man;
     $('#ratehint').textContent = man ? 'تُستخدم هذه التكلفة لكل ساعة يُسجَّل فيها الموظف على مشروع (ويمكن تغييرها في الإدخال نفسه للساعات الإضافية).' : `التكلفة التلقائية: ${money(Math.round(tot / 240))} ر.س للساعة (الراتب والبدلات ÷ 30 يوماً × 8 ساعات).`; };
   ['#f-basic_salary', '#f-housing_allowance', '#f-transport_allowance', '#f-other'].forEach(k => $(k)?.addEventListener('input', rh)); $('#f-rate_mode').addEventListener('change', rh); rh();
+  const et = () => { const t = $('#f-employment_type').value; $('#salfs').hidden = $('#ratefs').hidden = t !== 'monthly'; $('#casfs').hidden = t === 'monthly'; $('#f-daily_rate').closest('.field').hidden = t !== 'daily'; $('#f-casual_rate').closest('.field').hidden = t !== 'hourly'; };
+  $('#f-employment_type').addEventListener('change', et); et();
 }
 
 // ---------- payroll ----------

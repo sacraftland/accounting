@@ -5,7 +5,8 @@
 // Inserted after ext3.js by build.py.
 // =====================================================================
 const PTYPE = { customer: ['مشروع لعميل', 'b-info'], production: ['تصنيع إنتاجي', 'b-warn'], internal: ['مركز تكلفة داخلي', 'b-draft'] };
-const wpickRow = (w, on) => `<label class="row" style="gap:6px"><input type="checkbox" name="w_${esc(w.id)}" ${on ? 'checked' : ''}> ${esc(w.full_name)}<span class="xs muted">${esc(w.job_title || '')}</span></label>`;
+const WTYPE = { monthly: '', daily: 'يومية', hourly: 'بالساعة' };
+const wpickRow = (w, on) => `<label class="row" style="gap:6px"><input type="checkbox" name="w_${esc(w.id)}" ${on ? 'checked' : ''}> ${esc(w.full_name)}<span class="xs muted">${esc([w.job_title, WTYPE[w.employment_type]].filter(Boolean).join(' · '))}</span></label>`;
 const PHASES = ['التصميم والاعتماد', 'القص والتجهيز', 'اللحام والهيكل', 'الكهرباء والسباكة', 'العزل', 'الدهان', 'التجهيز الداخلي', 'الفحص والتسليم'];
 const projEditable = () => can('accounting', 'create') || can('manufacturing', 'create');
 const hoursEditable = () => can('hr', 'create') || can('manufacturing', 'create') || can('accounting', 'create');
@@ -187,7 +188,8 @@ function projTasks(x) {
       <fieldset><legend>العمّال المكلّفون</legend><div class="wpick" id="wpick">${workers.length ? workers.map(w => wpickRow(w, (t.employee_ids || []).includes(w.id))).join('') : '<p class="muted xs" id="wnone">لا يوجد عمال بعد — أضف أول عامل من الزر أدناه، أو من صفحة «الموظفون».</p>'}</div>
         ${can('hr', 'create') ? `<button type="button" class="btn ghost sm" id="wnewb" style="margin-top:8px">${icon('plus')}عامل جديد</button>
         <div id="wnew" hidden class="card" style="margin-top:8px;padding:12px"><div class="form-grid">${field('wn_name', 'اسم العامل', {})}${field('wn_job', 'المهنة', { help: 'لحام، دهان، كهربائي…' })}
-          ${select('wn_saudi', 'الجنسية', [['0', 'غير سعودي'], ['1', 'سعودي']], '0')}${field('wn_sal', 'الراتب الشهري (ر.س)', { type: 'money', help: 'أو اتركه واكتب تكلفة الساعة' })}${field('wn_rate', 'تكلفة الساعة (اختياري)', { type: 'money' })}</div>
+          ${select('wn_type', 'النوع', [['daily', 'عامل يومية'], ['hourly', 'عامل بالساعة'], ['monthly', 'موظف شهري']], 'daily')}${select('wn_saudi', 'الجنسية', [['0', 'غير سعودي'], ['1', 'سعودي']], '0')}
+          ${field('wn_day', 'الأجر اليومي (ر.س)', { type: 'money' })}${field('wn_rate', 'أجر الساعة (ر.س)', { type: 'money' })}${field('wn_sal', 'الراتب الشهري (ر.س)', { type: 'money' })}</div>
           <div class="row" style="gap:6px;margin-top:8px"><button type="button" class="btn secondary sm" id="wnadd">إضافة العامل</button><span class="xs muted">يُضاف لقائمة الموظفين، وتكمل بياناته (الإقامة، الآيبان…) لاحقاً.</span></div><p class="help err" id="wnerr"></p></div>` : ''}</fieldset>
       <div class="form-grid">${field('start_date', 'البداية', { type: 'date', value: t.start_date || '' })}${field('due_date', 'الاستحقاق', { type: 'date', value: t.due_date || '' })}
         ${field('est_hours', 'الساعات المقدّرة', { value: t.est_hours ? fq(t.est_hours) : '', attrs: 'inputmode="decimal"' })}${select('priority', 'الأولوية', [['low', 'منخفضة'], ['normal', 'عادية'], ['high', 'عاجلة']], t.priority)}
@@ -199,14 +201,17 @@ function projTasks(x) {
           est_hours: eh, priority: v.priority, status: v.status, notes: v.notes || null, sort: t.sort ?? tasks.length + 1 });
         toast('حُفظت المهمة'); projectView(c.id, new URLSearchParams('tab=tasks')); });
     if ($('#wnewb', fd)) $('#wnewb', fd).onclick = () => { $('#wnew', fd).hidden = !$('#wnew', fd).hidden; $('#f-wn_name', fd).focus(); };
+    const wnt = () => { if (!$('#f-wn_type', fd)) return; const t = $('#f-wn_type', fd).value; [['wn_day', 'daily'], ['wn_rate', 'hourly'], ['wn_sal', 'monthly']].forEach(([k, v]) => $('#f-' + k, fd).closest('.field').hidden = t !== v); };
+    if ($('#f-wn_type', fd)) { $('#f-wn_type', fd).onchange = wnt; wnt(); }
     if ($('#wnadd', fd)) $('#wnadd', fd).onclick = async e => { const err = $('#wnerr', fd); err.textContent = ''; const name = $('#f-wn_name', fd).value.trim();
-      const sal = $('#f-wn_sal', fd).value ? toHalalas($('#f-wn_sal', fd).value) : null, rate = $('#f-wn_rate', fd).value ? toHalalas($('#f-wn_rate', fd).value) : null;
-      if (!name) return err.textContent = 'اكتب اسم العامل'; if ((sal != null && !(sal > 0)) || (rate != null && !(rate > 0))) return err.textContent = 'مبلغ غير صحيح';
-      if (sal == null && rate == null) return err.textContent = 'اكتب الراتب الشهري أو تكلفة الساعة';
+      const typ = $('#f-wn_type', fd).value, amt = k => $('#f-' + k, fd).value ? toHalalas($('#f-' + k, fd).value) : null;
+      const day = typ === 'daily' ? amt('wn_day') : null, rate = typ === 'hourly' ? amt('wn_rate') : null, sal = typ === 'monthly' ? amt('wn_sal') : null;
+      if (!name) return err.textContent = 'اكتب اسم العامل';
+      const need = { daily: [day, 'الأجر اليومي'], hourly: [rate, 'أجر الساعة'], monthly: [sal, 'الراتب الشهري'] }[typ]; if (!(need[0] > 0)) return err.textContent = 'اكتب ' + need[1];
       e.target.disabled = true;
       try { const emp = await api.saveEmployee({ full_name: name, job_title: $('#f-wn_job', fd).value.trim() || null, is_saudi: $('#f-wn_saudi', fd).value === '1', hire_date: riyadhToday(), status: 'active',
-          basic_salary: sal ?? rate * 240, housing_allowance: 0, transport_allowance: 0, other_allowances: {}, gosi_enrolled: $('#f-wn_saudi', fd).value === '1', hourly_rate: rate });
-        const w = { id: emp.id, full_name: emp.full_name, job_title: emp.job_title, hour_rate: rate ?? Math.round((sal || 0) / 240), rate_manual: rate != null };
+          employment_type: typ, daily_rate: day, basic_salary: sal || 0, housing_allowance: 0, transport_allowance: 0, other_allowances: {}, gosi_enrolled: typ === 'monthly' && $('#f-wn_saudi', fd).value === '1', hourly_rate: rate });
+        const w = { id: emp.id, full_name: emp.full_name, job_title: emp.job_title, employment_type: typ, daily_rate: day, hour_rate: rate ?? (day ? Math.round(day / 8) : Math.round((sal || 0) / 240)), rate_manual: rate != null };
         workers.push(w); $('#wnone', fd)?.remove(); $('#wpick', fd).insertAdjacentHTML('beforeend', wpickRow(w, true));
         ['wn_name', 'wn_job', 'wn_sal', 'wn_rate'].forEach(k => $('#f-' + k, fd).value = ''); $('#wnew', fd).hidden = true; toast('أُضيف العامل: ' + name); }
       catch (z) { err.textContent = z.message; } finally { e.target.disabled = false; } };
@@ -280,7 +285,7 @@ function projLabor(x) {
   $('#ptab').innerHTML = `${canLog ? `<section class="card" style="margin-bottom:16px"><h3 style="margin-bottom:8px">تسجيل ساعات اليوم</h3>${team.length ? `<form id="tsf" novalidate>
       <div class="form-grid" style="margin-bottom:8px">${field('work_date', 'التاريخ', { type: 'date', value: today })}<div class="field"><label for="f-task_id">المهمة</label><select class="input" id="f-task_id" name="task_id">${optList(tasks.filter(t => t.status !== 'done').map(t => [t.id, t.title]), '', '— عام للمشروع —')}</select></div></div>
       <div class="tbl-wrap editor"><table><thead><tr><th>العامل</th><th style="width:110px">الساعات</th><th style="width:150px">تكلفة الساعة</th><th class="amt">القيمة</th></tr></thead><tbody>
-        ${team.map(w => `<tr data-w="${esc(w.id)}" data-r="${w.hour_rate ?? ''}"><td>${esc(w.full_name)}${assigned.has(w.id) ? ' <span class="chip">في المشروع</span>' : ''}<div class="xs muted">${esc(w.job_title || '')}</div></td>
+        ${team.map(w => `<tr data-w="${esc(w.id)}" data-r="${w.hour_rate ?? ''}"><td>${esc(w.full_name)}${assigned.has(w.id) ? ' <span class="chip">في المشروع</span>' : ''}${WTYPE[w.employment_type] ? ` <span class="chip">${WTYPE[w.employment_type]}</span>` : ''}<div class="xs muted">${esc(w.job_title || '')}${w.employment_type === 'daily' && w.daily_rate ? ` · ${money(w.daily_rate)}/يوم — 8 ساعات = يوم` : ''}</div></td>
           <td><input class="input num" data-k="h" inputmode="decimal" placeholder="0" aria-label="ساعات ${esc(w.full_name)}"></td>
           <td><input class="input num" data-k="r" inputmode="decimal" placeholder="${w.hour_rate != null ? money(w.hour_rate) + (w.rate_manual ? '' : ' تلقائي') : 'تلقائي'}" aria-label="تكلفة الساعة"><div class="xs muted">اتركها فارغة للتكلفة ${w.rate_manual ? 'المحددة' : 'التلقائية'}</div></td><td class="amt num" data-k="a">—</td></tr>`).join('')}</tbody></table></div>
       <div class="row" style="justify-content:space-between;margin-top:8px;flex-wrap:wrap;gap:8px"><span class="muted" id="tstot"></span><button class="btn primary" type="submit">حفظ الساعات</button></div></form>`
@@ -291,7 +296,24 @@ function projLabor(x) {
       ${draft.length && canPost ? `<div class="note" style="margin-top:12px">${draft.length} إدخال غير مرحّل بقيمة <b class="num">${money(draft.reduce((s, t) => s + t.amount, 0))}</b> — رحّلها لتظهر في تكلفة المشروع وأرباحه.<div style="margin-top:8px"><button class="btn primary sm" id="tspost">ترحيل تكلفة العمالة حتى اليوم</button></div></div>` : ''}
       <p class="xs muted" style="margin-top:8px">الترحيل ينقل تكلفة الساعات من الرواتب العامة إلى المشروع — لا يغيّر إجمالي رواتب الشركة.</p></section>
       <section class="card"><h3 style="margin-bottom:8px">آخر الإدخالات</h3>${sheets.length ? `<div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><tbody>${sheets.slice(0, 100).map(s => `<tr><td class="num xs">${esc(s.work_date)}</td><td>${esc(W[s.employee_id]?.full_name || '')}<div class="xs muted">${esc(T[s.task_id] || 'عام')}${s.rate_manual ? ' · سعر يدوي' : ''}</div></td>
-          <td class="amt num">${fq(s.hours)} س</td><td class="amt num">${money(s.amount)}</td><td>${s.status === 'posted' ? badge(['مرحّل', 'b-ok']) : canLog ? `<button class="btn ghost icon sm" data-tsdel="${esc(s.id)}" aria-label="حذف">${icon('trash')}</button>` : badge(['غير مرحّل', 'b-warn'])}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">—</p>'}</section></div>`;
+          <td class="amt num">${fq(s.hours)} س</td><td class="amt num">${money(s.amount)}</td><td>${s.status === 'posted' ? badge(['مرحّل', 'b-ok']) : canLog ? `<button class="btn ghost icon sm" data-tsdel="${esc(s.id)}" aria-label="حذف">${icon('trash')}</button>` : badge(['غير مرحّل', 'b-warn'])}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">—</p>'}</section></div>
+    <div class="grid g2" style="align-items:start;margin-top:16px"><section class="card" id="casual"><h3 style="margin-bottom:8px">أجور العمالة باليومية والساعة</h3><p class="muted">جارٍ التحميل…</p></section>
+      <section class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><h3 style="margin:0">الورش الخارجية ومقاولو الباطن</h3>${can('purchases', 'create') && !c.is_template ? '<button class="btn secondary sm" id="subc">تسجيل أعمال ورشة خارجية</button>' : ''}</div>
+        <p class="xs muted" style="margin:6px 0 8px">الورشة الخارجية تُسجَّل «مورداً»، وأعمالها فاتورة مشتريات على المشروع (بند خدمة)، وتُدفع بسند صرف.</p>
+        ${(() => { const bills = x.d.docs.filter(z => z.kind === 'purchase_bill'); return bills.length ? `<div class="tbl-wrap"><table><tbody>${bills.map(z => `<tr><td><a href="#/bills/${esc(z.id)}"><span class="num">${esc(z.number || 'مسودة')}</span></a> ${esc(z.parties?.name || '')}</td><td class="num xs">${esc(z.issue_date)}</td><td class="amt num">${money(z.total)}</td><td>${badge(z.payment_status === 'paid' ? ['مدفوعة', 'b-ok'] : ['غير مدفوعة', 'b-warn'])}</td></tr>`).join('')}
+          <tr class="grand"><td colspan="2">الإجمالي</td><td class="amt num">${money(bills.reduce((a, z) => a + Number(z.total), 0))}</td><td></td></tr></tbody></table></div>` : '<p class="muted">لا توجد فواتير موردين أو ورش على هذا المشروع بعد.</p>'; })()}</section></div>`;
+  if ($('#subc')) $('#subc').onclick = () => { sessionStorage.setItem('doc-prefill', JSON.stringify({ cc: c.id, note: 'أعمال ورشة خارجية — ' + c.name })); location.hash = '#/bills/new'; };
+  (async () => { const box = $('#casual'); if (!box) return; let bal = [];
+    try { bal = await api.casualBalances(); } catch { box.innerHTML = '<h3>أجور العمالة باليومية والساعة</h3><p class="muted">لا تملك صلاحية عرضها.</p>'; return; }
+    const here = new Set(sheets.map(t => t.employee_id)), rows = bal.filter(b => here.has(b.employee_id) || b.owed > 0), canPay = can('expenses', 'post') || can('accounting', 'post') || can('hr', 'post');
+    box.innerHTML = `<h3 style="margin-bottom:8px">أجور العمالة باليومية والساعة</h3>${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>العامل</th><th class="amt">المستحق (كل المشاريع)</th><th class="amt">المصروف</th><th class="amt">الباقي</th><th></th></tr></thead><tbody>
+      ${rows.map(b => `<tr><td>${esc(b.full_name)} <span class="chip">${WTYPE[b.employment_type]}</span></td><td class="amt num">${money(b.earned)}</td><td class="amt num">${money(b.paid)}</td><td class="amt num"><b class="${b.owed > 0 ? 'down' : ''}">${money(b.owed)}</b></td>
+        <td>${b.owed > 0 && canPay ? `<button class="btn secondary sm" data-pay="${esc(b.employee_id)}">صرف</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+      <p class="xs muted" style="margin-top:6px">تُستحق الأجور عند «ترحيل تكلفة العمالة»، ثم تُصرف من الصندوق أو البنك.</p>` : '<p class="muted">لا يوجد عمال باليومية أو الساعة على هذا المشروع. أضفهم من «المهام ← عامل جديد» أو من «الموظفون».</p>'}`;
+    $$('[data-pay]', box).forEach(btn => btn.onclick = async () => { const b = rows.find(r => r.employee_id === btn.dataset.pay), accs = (await api.listAccounts()).filter(a => a.is_postable && ['cash', 'bank'].includes(a.system_key));
+      drawer('صرف أجور: ' + b.full_name, `<p>الباقي المستحق: <b class="num">${money(b.owed)}</b> ر.س</p>${field('amount', 'المبلغ', { type: 'money', req: true, value: money(b.owed) })}
+        ${select('cash', 'يُصرف من', accs.map(a => [a.id, `${a.code} — ${a.name_ar}`]), accs[0]?.id)}${field('date', 'التاريخ', { type: 'date', value: riyadhToday() })}${field('memo', 'البيان', { value: 'أجور ' + b.full_name + ' — ' + c.name })}`,
+        async v => { const a = toHalalas(v.amount); if (!(a > 0)) throw new AppError('أدخل المبلغ'); await api.payCasual(b.employee_id, a, v.cash, v.date, v.memo); toast('صُرفت الأجور'); projectView(c.id, new URLSearchParams('tab=labor')); }, 'صرف'); }); })();
   const recalc = () => { let th = 0, ta = 0; $$('#tsf tr[data-w]').forEach(tr => { const h = num($('[data-k=h]', tr).value || 0) || 0, rr = $('[data-k=r]', tr).value ? toHalalas($('[data-k=r]', tr).value) : (tr.dataset.r === '' ? null : Number(tr.dataset.r));
     $('[data-k=a]', tr).textContent = h && rr != null ? money(Math.round(h * rr)) : h ? 'تلقائي' : '—'; th += h; ta += h && rr != null ? Math.round(h * rr) : 0; });
     if ($('#tstot')) $('#tstot').textContent = th ? `${fq(th)} ساعة${ta ? ` · ${money(ta)} ر.س` : ''}` : ''; };
