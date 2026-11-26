@@ -151,6 +151,16 @@ with sync_playwright() as p:
     check('task saved with project', one("select count(*) from tasks where cost_center_id is not null and priority='high'") == '1', err())
     pg.click('.kcard [data-mv=doing]'); pg.wait_for_timeout(1000)
     check('task moved to doing', one("select status from tasks") == 'doing')
+    check('nav groups projects & tasks', 'المهام والمشاريع' in pg.inner_text('.nav'))
+    pid = one("select id from cost_centers where code='P-01'")
+    go(f'#/projects/{pid}', 1800)
+    check('project page shows its tasks', 'المهام ونسبة الإنجاز' in main() and 'تجهيز الهيكل' in main(), main()[:400])
+    pg.click('#ptadd'); pg.wait_for_timeout(300); pg.fill('.drawer #f-title', 'الدهان'); submit(1500)
+    check('task added from project page', one(f"select count(*) from tasks where cost_center_id='{pid}'") == '2', err())
+    pg.locator('[data-tdone]').first.check(); pg.wait_for_timeout(1500)
+    check('ticking a task updates progress', 'الإنجاز: 1 من 2' in main().replace('\n', ' ') and '50%' in main(), main()[:500])
+    go('#/projects', 1500)
+    check('projects list shows task progress', '1/2' in main(), main()[:500])
 
     # ---------- commitments ----------
     go('#/commitments'); pg.click('#newc2'); pg.wait_for_timeout(300)

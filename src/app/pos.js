@@ -8,6 +8,7 @@ async function projectsView() {
   shell('projects', loading());
   const [ccs, pl] = await Promise.all([api.listCostCenters(), can('accounting') || can('reports') ? api.projectPl('2000-01-01', riyadhToday()) : []]);
   const P = Object.fromEntries(pl.map(r => [r.id, r])), editable = can('accounting', 'create') || can('manufacturing', 'create');
+  const ts = api.listTasks ? await api.listTasks().catch(() => []) : [], TS = {}; ts.forEach(t => { if (!t.cost_center_id) return; const x = (TS[t.cost_center_id] ||= { n: 0, done: 0, late: 0 }); x.n++; if (t.status === 'done') x.done++; else if (t.due_date && t.due_date < riyadhToday()) x.late++; });
   const rows = ccs.map(c => { const r = P[c.id] || { revenue: 0, cogs: 0, expenses: 0 }, cost = r.cogs + r.expenses, profit = r.revenue - cost;
     return { ...c, ...r, cost, profit, margin: r.revenue ? profit / r.revenue * 100 : null, progress: c.contract_value ? r.revenue / c.contract_value * 100 : null }; });
   const T = k => rows.reduce((s, r) => s + (r[k] || 0), 0);
@@ -15,11 +16,12 @@ async function projectsView() {
     <p class="muted" style="margin:-8px 0 16px">اختر المشروع في الفاتورة أو فاتورة الشراء أو المصروف أو أمر التصنيع أو ملف الموظف، فتظهر هنا إيراداته وتكاليفه وربحه — لكل كرفان أو عقد أو فرع.</p>
     <div class="grid g4" style="margin-bottom:20px">${[['مشاريع نشطة', rows.filter(r => r.status === 'active').length, 0], ['إيرادات المشاريع', T('revenue'), 1], ['تكاليف المشاريع', T('cost'), 1], ['ربح المشاريع', T('profit'), 1]]
       .map(([t, v, m]) => `<div class="card stat"><div class="label">${t}</div><div class="val num ${m && v < 0 ? 'down' : ''}">${m ? money(v) : v}</div></div>`).join('')}</div>
-    ${rows.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الرمز</th><th>المشروع</th><th class="amt m-hide">قيمة العقد</th><th class="amt">الإيرادات</th><th class="amt">التكاليف</th><th class="amt">الربح</th><th class="amt m-hide">الهامش</th><th class="m-hide">الإنجاز (فوترة)</th><th>الحالة</th></tr></thead><tbody>
+    ${rows.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الرمز</th><th>المشروع</th><th class="amt m-hide">قيمة العقد</th><th class="amt">الإيرادات</th><th class="amt">التكاليف</th><th class="amt">الربح</th><th class="amt m-hide">الهامش</th><th class="m-hide">الفوترة</th><th>المهام</th><th>الحالة</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click" data-href="#/projects/${esc(r.id)}"><td class="num"><a class="rowlink" href="#/projects/${esc(r.id)}">${esc(r.code)}</a></td><td style="white-space:normal"><b>${esc(r.name)}</b>${r.is_project ? '' : ' <span class="xs muted">مركز تكلفة</span>'}</td>
         <td class="amt num m-hide">${r.contract_value ? money(r.contract_value) : '—'}</td><td class="amt num">${money(r.revenue)}</td><td class="amt num">${money(r.cost)}</td><td class="amt num ${r.profit < 0 ? 'down' : ''}"><b>${money(r.profit)}</b></td>
         <td class="amt num m-hide">${r.margin == null ? '—' : r.margin.toFixed(1) + '%'}</td>
         <td class="m-hide">${r.progress == null ? '—' : `<div class="bar" title="${r.progress.toFixed(0)}%"><i style="width:${Math.min(100, r.progress).toFixed(0)}%"></i></div><span class="xs muted num">${r.progress.toFixed(0)}%</span>`}</td>
+        <td>${TS[r.id] ? `<div class="bar" title="${TS[r.id].done}/${TS[r.id].n}"><i style="width:${(TS[r.id].done / TS[r.id].n * 100).toFixed(0)}%"></i></div><span class="xs muted num">${TS[r.id].done}/${TS[r.id].n}</span>${TS[r.id].late ? ` <span class="xs down">${TS[r.id].late} متأخرة</span>` : ''}` : '<span class="xs muted">—</span>'}</td>
         <td>${badge(r.status === 'active' ? ['نشط', 'b-ok'] : ['مغلق', 'b-draft'])}</td></tr>`).join('')}</tbody></table></div>`
     : empty('chart', 'لا توجد مشاريع بعد', 'أنشئ مشروعاً لكل كرفان أو عقد كبير، أو مركز تكلفة لكل قسم (الورشة، المعرض)، لتعرف ربح كل واحد.', editable ? `<button class="btn primary" id="newcc2">${icon('plus')}مشروع جديد</button>` : '')}`;
   ['#newcc', '#newcc2'].forEach(s => { if ($(s)) $(s).onclick = () => projectDrawer(null, ccs); });
@@ -55,7 +57,24 @@ async function projectView(id) {
         <section class="card"><h3 style="margin-bottom:8px">أوامر التصنيع</h3>${d.mfg.length ? `<div class="tbl-wrap"><table><tbody>${d.mfg.map(x => `<tr><td><a href="#/mfg/${esc(x.id)}">${esc(x.items?.name_ar || '')} <span class="num">${esc(x.number || 'مسودة')}</span></a></td><td class="num">${fq(x.qty)}</td><td class="amt num">${x.status === 'posted' ? money(x.total_cost) : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد.</p>'}</section>
         <section class="card"><h3 style="margin-bottom:8px">المصروفات</h3>${d.expenses.length ? `<div class="tbl-wrap"><table><tbody>${d.expenses.map(x => `<tr><td>${esc(x.description || x.number || '')}</td><td class="num">${esc(x.expense_date)}</td><td class="amt num">${money(x.amount)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد.</p>'}</section></div></div>`;
   if ($('#edcc')) $('#edcc').onclick = () => projectDrawer(c, ccs);
+  if (api.mode === 'supabase') projectTasksCard(c);
 }
+async function projectTasksCard(c) {
+  const ts = (await api.listTasks().catch(() => [])).filter(t => t.cost_center_id === c.id), done = ts.filter(t => t.status === 'done').length, today = riyadhToday();
+  const ST = { todo: ['للتنفيذ', 'b-draft'], doing: ['قيد التنفيذ', 'b-warn'], done: ['منجزة', 'b-ok'] }, pctv = ts.length ? Math.round(done / ts.length * 100) : 0;
+  const sec = document.createElement('section'); sec.className = 'card'; sec.style.marginBottom = '20px'; sec.id = 'ptasks';
+  sec.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h3 style="margin:0">المهام ونسبة الإنجاز</h3><span class="row" style="gap:6px"><a class="btn ghost sm" href="#/tasks?project=${esc(c.id)}">لوحة المهام</a>${can_any_write() ? '<button class="btn secondary sm" id="ptadd">' + icon('plus') + 'مهمة</button>' : ''}</span></div>
+    <div class="row" style="justify-content:space-between;margin-top:10px"><span>الإنجاز: <b class="num">${done}</b> من <b class="num">${ts.length}</b> مهمة</span><b class="num">${pctv}%</b></div>
+    <div class="bar" style="margin:6px 0 12px;height:10px"><i style="width:${pctv}%"></i></div>
+    ${ts.length ? `<div class="tbl-wrap"><table><tbody>${ts.map(t => `<tr><td><label class="row" style="gap:8px"><input type="checkbox" data-tdone="${esc(t.id)}" ${t.status === 'done' ? 'checked' : ''} aria-label="منجزة"> <span style="${t.status === 'done' ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(t.title)}</span></label></td>
+      <td>${badge(ST[t.status])}${t.priority === 'high' ? ' ' + badge(['عاجل', 'b-bad']) : ''}</td><td class="num xs ${t.status !== 'done' && t.due_date && t.due_date < today ? 'down' : 'muted'}">${esc(t.due_date || '')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">لا توجد مهام بعد — قسّم المشروع إلى مهام (تصميم، قص، لحام، دهان، تجهيز داخلي، تسليم) بمسؤول وتاريخ استحقاق.</p>'}`;
+  const anchor = $('#main .grid.g2'); if (anchor) anchor.before(sec); else $('#main').append(sec);
+  $$('[data-tdone]', sec).forEach(cb => cb.onchange = async () => { try { await api.saveTask({ id: cb.dataset.tdone, status: cb.checked ? 'done' : 'todo' }); projectTasksCard2(c); } catch (x) { fail(x); cb.checked = !cb.checked; } });
+  if ($('#ptadd', sec)) $('#ptadd', sec).onclick = () => drawer('مهمة جديدة — ' + c.name, `${field('title', 'المهمة', { req: true })}<div class="form-grid">${field('due_date', 'تاريخ الاستحقاق', { type: 'date' })}${select('priority', 'الأولوية', [['low', 'منخفضة'], ['normal', 'عادية'], ['high', 'عاجلة']], 'normal')}</div>`,
+    async v => { if (!v.title?.trim()) throw new AppError('اكتب المهمة'); await api.saveTask({ title: v.title.trim(), cost_center_id: c.id, due_date: v.due_date || null, priority: v.priority, status: 'todo' }); toast('أُضيفت المهمة'); projectTasksCard2(c); });
+}
+const projectTasksCard2 = c => { $('#ptasks')?.remove(); projectTasksCard(c); };
 
 // ---------- point of sale ----------
 const POS_CART = 'daftar-pos-cart';
