@@ -105,7 +105,7 @@ let ORG = null;
 function shell(active, html) {
   const logo = ORG?.logo_path ? `<img src="${esc(ORG.logo_path)}" alt="" style="width:34px;height:34px;object-fit:contain;border-radius:8px;background:#fff">` : `<span class="mark">${icon('book')}</span>`;
   $('#app').innerHTML = `<div class="shell">
-    <aside class="side" id="side" aria-label="القائمة الرئيسية"><div class="brand">${logo}<span>${esc(ORG?.name_ar || 'دفتر')}</span></div><div id="orgsw" style="padding:0 12px 8px"></div>
+    <aside class="side" id="side" aria-label="القائمة الرئيسية"><div class="brand">${logo}<span>${esc(ORG?.name_ar || 'كرافت لاند')}</span></div><div id="orgsw" style="padding:0 12px 8px"></div>
       <nav class="nav">${NAV.filter(navVisible).filter((n, i, a) => n[0] !== 'g' || (a[i + 1] && a[i + 1][0] !== 'g')).map(([k, ic, t, , , soon]) => k === 'g' ? (t ? `<div class="nav-group">${esc(t)}</div>` : '<div style="height:12px"></div>') :
         `<a href="#/${k}" class="${active === k ? 'on' : ''}" ${active === k ? 'aria-current="page"' : ''}>${icon(ic)}${esc(t)}${soon ? '<span class="xs" style="margin-inline-start:auto;opacity:.6">قريباً</span>' : ''}</a>`).join('')}</nav></aside>
     <div class="main"><header class="top">
@@ -132,7 +132,7 @@ const empty = (ic, title, text, action = '') => `<div class="card empty">${icon(
 // ---------- auth ----------
 const G_LOGO = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
 const authCard = (title, sub, body) => `<div class="auth"><div class="card">
-    <div class="brand"><span class="mark">${icon('book')}</span><span>دفتر</span></div>
+    <div class="brand"><span class="mark">${icon('book')}</span><span>كرافت لاند</span></div>
     <h1 style="font-size:var(--fs-lg);text-align:center;margin-bottom:4px">${title}</h1>
     ${sub ? `<p class="muted" style="text-align:center;margin:0 0 20px">${sub}</p>` : ''}
     ${authNotice ? `<p class="note ${authNotice.kind}" role="status" style="margin-bottom:16px">${esc(authNotice.text)}</p>` : ''}${body}</div></div>`;
@@ -668,7 +668,7 @@ async function route() {
     if (!r) { location.hash = '#/dashboard'; return; }
     await r[1](h.match(r[0]));
     $('#side')?.classList.remove('open'); $('#main')?.focus({ preventScroll: true }); window.scrollTo(0, 0);
-    document.title = ($('#main h1')?.textContent || 'دفتر') + ' — ' + (ORG?.name_ar || '');
+    document.title = ($('#main h1')?.textContent || 'كرافت لاند') + ' — ' + (ORG?.name_ar || '');
   } catch (e) {
     fail(e);
     if ($('#main')) $('#main').innerHTML = `<div class="card empty">${icon('alert')}<h3 style="margin:12px 0 4px">تعذّر تحميل الصفحة</h3><p class="muted">${esc(e.message)}</p><button class="btn primary" onclick="location.reload()">إعادة المحاولة</button></div>`;

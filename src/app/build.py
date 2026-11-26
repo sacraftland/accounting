@@ -12,7 +12,7 @@ html = f'''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#2f2a24">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%234f6b3a%22/%3E%3Cpath d=%22M9 8h11a3 3 0 0 1 3 3v13H12a3 3 0 0 1-3-3z%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22/%3E%3C/svg%3E">
-<title>دفتر</title>
+<title>كرافت لاند — النظام المحاسبي</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>{css}
