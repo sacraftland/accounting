@@ -3735,6 +3735,7 @@ const EXT3_ROUTES = [
 // Inserted after ext3.js by build.py.
 // =====================================================================
 const PTYPE = { customer: ['مشروع لعميل', 'b-info'], production: ['تصنيع إنتاجي', 'b-warn'], internal: ['مركز تكلفة داخلي', 'b-draft'] };
+const wpickRow = (w, on) => `<label class="row" style="gap:6px"><input type="checkbox" name="w_${esc(w.id)}" ${on ? 'checked' : ''}> ${esc(w.full_name)}<span class="xs muted">${esc(w.job_title || '')}</span></label>`;
 const PHASES = ['التصميم والاعتماد', 'القص والتجهيز', 'اللحام والهيكل', 'الكهرباء والسباكة', 'العزل', 'الدهان', 'التجهيز الداخلي', 'الفحص والتسليم'];
 const projEditable = () => can('accounting', 'create') || can('manufacturing', 'create');
 const hoursEditable = () => can('hr', 'create') || can('manufacturing', 'create') || can('accounting', 'create');
@@ -3913,7 +3914,11 @@ function projTasks(x) {
   const open = t => { t = t || { status: 'todo', priority: 'normal', employee_ids: [], start_date: c.start_date || '', sort: tasks.length + 1 };
     const fd = drawer(t.id ? 'تعديل مهمة' : 'مهمة جديدة', `${field('title', 'المهمة', { req: true, value: t.title || '' })}
       <div class="field"><label for="f-phase">المرحلة</label><input class="input" id="f-phase" name="phase" list="phlist" value="${esc(t.phase || '')}"><datalist id="phlist">${[...new Set([...PHASES, ...phases.filter(Boolean)])].map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
-      <fieldset><legend>العمّال المكلّفون</legend>${workers.length ? `<div class="wpick">${workers.map(w => `<label class="row" style="gap:6px"><input type="checkbox" name="w_${esc(w.id)}" ${(t.employee_ids || []).includes(w.id) ? 'checked' : ''}> ${esc(w.full_name)}<span class="xs muted">${esc(w.job_title || '')}</span></label>`).join('')}</div>` : '<p class="muted xs">أضف الموظفين والعمال من «الموظفون» لتكليفهم بالمهام.</p>'}</fieldset>
+      <fieldset><legend>العمّال المكلّفون</legend><div class="wpick" id="wpick">${workers.length ? workers.map(w => wpickRow(w, (t.employee_ids || []).includes(w.id))).join('') : '<p class="muted xs" id="wnone">لا يوجد عمال بعد — أضف أول عامل من الزر أدناه، أو من صفحة «الموظفون».</p>'}</div>
+        ${can('hr', 'create') ? `<button type="button" class="btn ghost sm" id="wnewb" style="margin-top:8px">${icon('plus')}عامل جديد</button>
+        <div id="wnew" hidden class="card" style="margin-top:8px;padding:12px"><div class="form-grid">${field('wn_name', 'اسم العامل', {})}${field('wn_job', 'المهنة', { help: 'لحام، دهان، كهربائي…' })}
+          ${select('wn_saudi', 'الجنسية', [['0', 'غير سعودي'], ['1', 'سعودي']], '0')}${field('wn_sal', 'الراتب الشهري (ر.س)', { type: 'money', help: 'أو اتركه واكتب تكلفة الساعة' })}${field('wn_rate', 'تكلفة الساعة (اختياري)', { type: 'money' })}</div>
+          <div class="row" style="gap:6px;margin-top:8px"><button type="button" class="btn secondary sm" id="wnadd">إضافة العامل</button><span class="xs muted">يُضاف لقائمة الموظفين، وتكمل بياناته (الإقامة، الآيبان…) لاحقاً.</span></div><p class="help err" id="wnerr"></p></div>` : ''}</fieldset>
       <div class="form-grid">${field('start_date', 'البداية', { type: 'date', value: t.start_date || '' })}${field('due_date', 'الاستحقاق', { type: 'date', value: t.due_date || '' })}
         ${field('est_hours', 'الساعات المقدّرة', { value: t.est_hours ? fq(t.est_hours) : '', attrs: 'inputmode="decimal"' })}${select('priority', 'الأولوية', [['low', 'منخفضة'], ['normal', 'عادية'], ['high', 'عاجلة']], t.priority)}
         ${select('status', 'الحالة', Object.entries(ST).map(([k, v]) => [k, v[0]]), t.status)}</div>${field('notes', 'التفاصيل', { value: t.notes || '' })}
@@ -3923,6 +3928,18 @@ function projTasks(x) {
         await api.saveTask({ ...(t.id ? { id: t.id } : {}), cost_center_id: c.id, title: v.title.trim(), phase: v.phase?.trim() || null, employee_ids: workers.filter(w => v['w_' + w.id]).map(w => w.id), start_date: v.start_date || null, due_date: v.due_date || null,
           est_hours: eh, priority: v.priority, status: v.status, notes: v.notes || null, sort: t.sort ?? tasks.length + 1 });
         toast('حُفظت المهمة'); projectView(c.id, new URLSearchParams('tab=tasks')); });
+    if ($('#wnewb', fd)) $('#wnewb', fd).onclick = () => { $('#wnew', fd).hidden = !$('#wnew', fd).hidden; $('#f-wn_name', fd).focus(); };
+    if ($('#wnadd', fd)) $('#wnadd', fd).onclick = async e => { const err = $('#wnerr', fd); err.textContent = ''; const name = $('#f-wn_name', fd).value.trim();
+      const sal = $('#f-wn_sal', fd).value ? toHalalas($('#f-wn_sal', fd).value) : null, rate = $('#f-wn_rate', fd).value ? toHalalas($('#f-wn_rate', fd).value) : null;
+      if (!name) return err.textContent = 'اكتب اسم العامل'; if ((sal != null && !(sal > 0)) || (rate != null && !(rate > 0))) return err.textContent = 'مبلغ غير صحيح';
+      if (sal == null && rate == null) return err.textContent = 'اكتب الراتب الشهري أو تكلفة الساعة';
+      e.target.disabled = true;
+      try { const emp = await api.saveEmployee({ full_name: name, job_title: $('#f-wn_job', fd).value.trim() || null, is_saudi: $('#f-wn_saudi', fd).value === '1', hire_date: riyadhToday(), status: 'active',
+          basic_salary: sal ?? rate * 240, housing_allowance: 0, transport_allowance: 0, other_allowances: {}, gosi_enrolled: $('#f-wn_saudi', fd).value === '1', hourly_rate: rate });
+        const w = { id: emp.id, full_name: emp.full_name, job_title: emp.job_title, hour_rate: rate ?? Math.round((sal || 0) / 240), rate_manual: rate != null };
+        workers.push(w); $('#wnone', fd)?.remove(); $('#wpick', fd).insertAdjacentHTML('beforeend', wpickRow(w, true));
+        ['wn_name', 'wn_job', 'wn_sal', 'wn_rate'].forEach(k => $('#f-' + k, fd).value = ''); $('#wnew', fd).hidden = true; toast('أُضيف العامل: ' + name); }
+      catch (z) { err.textContent = z.message; } finally { e.target.disabled = false; } };
     if ($('#tdel', fd)) $('#tdel', fd).onclick = async e => { if (!confirmBtn(e.target)) return; try { await api.deleteTask(t.id); fd.closest('.drawer-bg').remove(); projectView(c.id, new URLSearchParams('tab=tasks')); } catch (z) { fail(z); } }; };
   if ($('#tadd')) $('#tadd').onclick = () => open(null);
   if ($('#tstd')) $('#tstd').onclick = async e => { e.target.disabled = true; let d = c.start_date || today; const step = n => { const z = new Date(d + 'T00:00:00'); z.setDate(z.getDate() + n); return ymd(z); };

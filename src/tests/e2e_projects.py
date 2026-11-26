@@ -91,6 +91,12 @@ with sync_playwright() as p:
     pg.locator('#ptab tr[data-t]', has_text='الدهان').first.click(); pg.wait_for_timeout(400)
     pg.check(f'.drawer [name="w_{e2}"]'); pg.check(f'.drawer [name="w_{e1}"]'); submit()
     check('workers assigned to tasks', one(f"select array_length(employee_ids,1) from tasks where cost_center_id='{p1}' and title='الدهان'") == '2' and 'محمد اللحام' in main(), err())
+    pg.locator('#ptab tr[data-t]', has_text='تمديدات الكهرباء').click(); pg.wait_for_timeout(400)
+    pg.click('.drawer #wnewb'); pg.fill('.drawer #f-wn_name', 'عبدالله الكهربائي'); pg.fill('.drawer #f-wn_job', 'كهربائي'); pg.fill('.drawer #f-wn_sal', '4800'); pg.click('.drawer #wnadd'); pg.wait_for_timeout(1500)
+    e3 = one("select id from employees where full_name='عبدالله الكهربائي'")
+    check('worker added from inside the task (auto rate 20.00/h) and pre-ticked', e3 != '' and pg.is_checked(f'.drawer [name="w_{e3}"]') and one(f"select basic_salary from employees where id='{e3}'") == '480000', pg.inner_text('.drawer #wnerr'))
+    submit()
+    check('task saved with the new worker', one(f"select '{e3}' = any(employee_ids) from tasks where cost_center_id='{p1}' and title like 'تمديدات%'") == 't', err())
     pg.locator('#ptab [data-done]').first.check(); pg.wait_for_timeout(1500)
     check('tick task done', one(f"select count(*) from tasks where cost_center_id='{p1}' and status='done'") == '1')
 
