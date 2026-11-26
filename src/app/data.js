@@ -502,6 +502,16 @@ const SupabaseAPI = (cfg) => {
     async listLeads() { return ok(await sb.from('leads').select('*').eq('org_id', await orgId()).order('created_at', { ascending: false })); },
     async saveLead(l) { const row = nulls({ ...l, org_id: await orgId(), updated_at: new Date().toISOString() }); return l.id ? ok(await sb.from('leads').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leads').insert(row).select().single()); },
     async deleteLead(id) { ok(await sb.from('leads').delete().eq('id', id)); },
+    async listStudies() { return ok(await sb.from('feasibility_studies').select('*').eq('org_id', await orgId()).order('updated_at', { ascending: false })); },
+    async getStudy(id) { return ok(await sb.from('feasibility_studies').select('*').eq('id', id).single()); },
+    async saveStudy(f) { const row = { name: f.name, kind: f.kind, inputs: f.inputs || {}, ai_notes: f.ai_notes || null, status: f.status || 'draft', org_id: await orgId() };
+      return f.id ? ok(await sb.from('feasibility_studies').update(row).eq('id', f.id).select().single()) : ok(await sb.from('feasibility_studies').insert(row).select().single()); },
+    async deleteStudy(id) { ok(await sb.from('feasibility_studies').delete().eq('id', id)); },
+    async projectHistory(cc) { const r = ok(await sb.rpc('project_cost_history', { p_org: await orgId(), p_cc: cc }))[0] || {};
+      return { revenue: Number(r.revenue || 0), materials: Number(r.materials || 0), labor: Number(r.labor || 0), other: Number(r.other || 0), hours: Number(r.hours || 0), qty: Number(r.qty || 0), name: r.name, product_item_id: r.product_item_id }; },
+    async itemHistory(item) { const r = ok(await sb.rpc('item_history', { p_org: await orgId(), p_item: item }))[0] || {};
+      return { avg_cost: Number(r.avg_cost || 0), avg_price: r.avg_price == null ? null : Number(r.avg_price), sold_qty: Number(r.sold_qty || 0), list_price: Number(r.list_price || 0), name: r.name }; },
+    async overheadHistory() { return ok(await sb.rpc('overhead_history', { p_org: await orgId() })).map(r => ({ id: r.account_id, name: r.name, monthly: Number(r.monthly) })); },
     async listTasks() { return ok(await sb.from('tasks').select('*, cost_centers(code,name)').eq('org_id', await orgId()).order('due_date', { nullsFirst: false })); },
     async saveTask(t) { const row = nulls({ ...t, org_id: await orgId() }); return t.id ? ok(await sb.from('tasks').update(row).eq('id', t.id).select().single()) : ok(await sb.from('tasks').insert(row).select().single()); },
     async deleteTask(id) { ok(await sb.from('tasks').delete().eq('id', id)); },

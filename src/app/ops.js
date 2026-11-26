@@ -6,7 +6,7 @@
 
 // ---------- permissions ----------
 const MODULES = [['sales', 'المبيعات'], ['purchases', 'المشتريات'], ['expenses', 'المصروفات'], ['inventory', 'المخزون'], ['manufacturing', 'التصنيع'],
-  ['accounting', 'المحاسبة والقيود'], ['reports', 'التقارير'], ['hr', 'الموارد البشرية'], ['settings', 'إعدادات المنشأة'], ['users', 'المستخدمون والصلاحيات']];
+  ['accounting', 'المحاسبة والقيود'], ['reports', 'التقارير'], ['hr', 'الموارد البشرية'], ['settings', 'إعدادات المنشأة'], ['users', 'المستخدمون والصلاحيات'], ['feasibility', 'دراسات الجدوى']];
 const ACTIONS = [['view', 'عرض'], ['create', 'إنشاء وتعديل'], ['post', 'اعتماد وترحيل']];
 const can = (m, a = 'view') => { const p = ORG?.perms; if (api.mode !== 'supabase' || !p || p._owner) return true;
   return a === 'view' ? ['view', 'create', 'post'].some(x => p[m]?.includes(x)) : !!p[m]?.includes(a); };

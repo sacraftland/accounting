@@ -11,11 +11,13 @@ function decoratePaper(el, s = invSet(), o = ORG) {
   const brand = hex2rgb(o.brand_color) ? o.brand_color : '#4f6b3a', pa = s.color === 'black' ? '#111111' : brand;
   el.classList.add('tpl-' + s.template); if (!s.show_logo) el.classList.add('nologo'); if (s.logo_pos === 'center') el.classList.add('logo-center');
   el.style.setProperty('--pa', pa); el.style.setProperty('--pa-soft', mix(pa, '#ffffff', 0.88)); el.style.setProperty('--pa-on', contrast(pa, '#ffffff') >= 4.5 ? '#ffffff' : '#111111');
-  const bank = [s.bank_name && `<div>البنك: <b>${esc(s.bank_name)}</b></div>`, s.account_name && `<div>اسم الحساب: ${esc(s.account_name)}</div>`, s.iban && `<div>الآيبان: <span class="num" dir="ltr">${esc(s.iban)}</span></div>`].filter(Boolean).join('');
+  const doc = !el.classList.contains('fs-paper');
+  const bank = !doc ? '' : [s.bank_name && `<div>البنك: <b>${esc(s.bank_name)}</b></div>`, s.account_name && `<div>اسم الحساب: ${esc(s.account_name)}</div>`, s.iban && `<div>الآيبان: <span class="num" dir="ltr">${esc(s.iban)}</span></div>`].filter(Boolean).join('');
   const stamp = s.show_stamp && o.stamp_path ? `<img class="p-stamp" src="${esc(o.stamp_path)}" alt="ختم ${esc(o.name_ar)}">` : '';
   const sig = s.show_signature && (o.signature_path || s.signer_name) ? `<div class="p-sig">${o.signature_path ? `<img src="${esc(o.signature_path)}" alt="التوقيع">` : '<div style="height:40px"></div>'}<div class="p-sigline">${esc(s.signer_name || '')}${s.signer_title ? `<br><span>${esc(s.signer_title)}</span>` : ''}</div></div>` : '';
-  if (!bank && !s.terms && !stamp && !sig) return;
-  el.insertAdjacentHTML('beforeend', `<div class="paper-extra">${bank || s.terms ? `<div class="p-info">${bank ? `<div class="p-bank"><b>بيانات التحويل البنكي</b>${bank}</div>` : ''}${s.terms ? `<div class="p-terms"><b>الشروط والأحكام</b><div>${esc(s.terms).replace(/\n/g, '<br>')}</div></div>` : ''}</div>` : '<div></div>'}
+  const terms = doc ? s.terms : '';
+  if (!bank && !terms && !stamp && !sig) return;
+  el.insertAdjacentHTML('beforeend', `<div class="paper-extra">${bank || terms ? `<div class="p-info">${bank ? `<div class="p-bank"><b>بيانات التحويل البنكي</b>${bank}</div>` : ''}${terms ? `<div class="p-terms"><b>الشروط والأحكام</b><div>${esc(terms).replace(/\n/g, '<br>')}</div></div>` : ''}</div>` : '<div></div>'}
     ${stamp || sig ? `<div class="p-sign">${stamp}${sig}</div>` : ''}</div>`);
 }
 new MutationObserver(ms => { if (!ORG) return; for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.matches?.('.paper')) decoratePaper(n); n.querySelectorAll?.('.paper').forEach(p => decoratePaper(p)); } })

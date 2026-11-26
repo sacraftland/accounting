@@ -96,7 +96,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['assets', 'box', 'الأصول الثابتة', 'accounting'],
   ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
-  ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'],
+  ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'], ['feasibility', 'chart', 'دراسات الجدوى', 'feasibility'],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
   ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
@@ -655,6 +655,7 @@ const ROUTES = [
   ...PROJECT_ROUTES,
   ...THEME_ROUTES,
   ...DESIGN_ROUTES,
+  ...FEAS_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

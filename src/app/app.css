@@ -242,3 +242,42 @@ details summary { cursor: pointer; margin-top: 8px; }
 .tv .empty{color:#c3b7a5;background:none;border:0;padding:8px 0}
 .tv footer{color:#8a7f70;font-size:14px;text-align:center}
 @media (max-width:900px){.tv-grid{grid-template-columns:1fr}.tv-tasks li{grid-template-columns:1fr 1fr}}
+
+/* ---------- feasibility studies ---------- */
+.fs-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); gap: 20px; align-items: start; }
+.fs-res { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+@media (max-width: 1100px) { .fs-grid { grid-template-columns: 1fr; } .fs-res { position: static; max-height: none; } }
+.fs-in { display: flex; gap: 6px; align-items: center; }
+.fs-in .input.num { flex: 1; min-width: 80px; }
+.fs-unit { font-size: 12px; color: var(--c-text-muted); white-space: nowrap; }
+.fs-src { font: inherit; font-size: 12px; height: 32px; border: 1px solid var(--c-border); border-radius: 8px; background: var(--c-surface-2); color: var(--c-text); padding: 0 6px; max-width: 120px; }
+.fs-ref:empty { display: none; }
+.fs-rows { display: grid; gap: 8px; }
+.fs-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(200px, 1.3fr) auto; gap: 8px; align-items: center; }
+.fs-row .fs-ref { grid-column: 1 / -1; margin-top: -4px; }
+@media (max-width: 600px) { .fs-row { grid-template-columns: 1fr auto; } .fs-row .fs-in { grid-column: 1 / -1; grid-row: 2; } }
+.fs-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fs-k { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--c-border); border-radius: 10px; }
+.fs-k > span:first-child { font-size: 12px; color: var(--c-text-muted); }
+.fs-k b { font-size: 17px; }
+.fs-scen input.input { width: 80px; }
+.fs-cmp td, .fs-cmp th { font-size: 12px; padding: 6px 8px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
+.sw.fs1, .fs-legend i.fs1 { background: #257de0; } .sw.fs2, .fs-legend i.fs2 { background: #f47230; } .sw.fs3, .fs-legend i.fs3 { background: #00b894; }
+.fs-legend { display: flex; gap: 14px; font-size: 12px; color: var(--c-text-muted); margin-top: 12px; }
+.fs-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-inline-end: 6px; vertical-align: middle; }
+.fs-chart polyline { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.fs-chart polyline.fs1 { stroke: #257de0; } .fs-chart polyline.fs2 { stroke: #f47230; } .fs-chart polyline.fs3 { stroke: #00b894; }
+.fs-chart .zero { stroke: var(--c-text-muted); stroke-width: 1; }
+.fs-chart .hit { fill: transparent; } .fs-chart .hit:hover { fill: var(--c-text); fill-opacity: .06; }
+[data-theme=dark] .sw.fs1, [data-theme=dark] .fs-legend i.fs1 { background: #338ced; } [data-theme=dark] .fs-chart polyline.fs1 { stroke: #338ced; }
+[data-theme=dark] .sw.fs2, [data-theme=dark] .fs-legend i.fs2 { background: #e76624; } [data-theme=dark] .fs-chart polyline.fs2 { stroke: #e76624; }
+[data-theme=dark] .sw.fs3, [data-theme=dark] .fs-legend i.fs3 { background: #00a888; } [data-theme=dark] .fs-chart polyline.fs3 { stroke: #00a888; }
+.fs-notes { white-space: normal; line-height: 1.8; font-size: 14px; max-height: 360px; overflow: auto; padding: 10px; background: var(--c-surface-2); border-radius: 8px; margin-top: 8px; }
+.fs-paper h3 { margin: 18px 0 8px; font-size: 15px; }
+.fs-paper .fs-notes { max-height: none; background: none; padding: 0; }
+.fs-paper .fs-legend { color: #444; }
+[data-theme=dark] .fs-paper .fs-chart polyline.fs1 { stroke: #257de0; } [data-theme=dark] .fs-paper .fs-chart polyline.fs2 { stroke: #f47230; } [data-theme=dark] .fs-paper .fs-chart polyline.fs3 { stroke: #00b894; }
+[data-theme=dark] .fs-paper .chart .tick { fill: #555; } [data-theme=dark] .fs-paper .chart .grid { stroke: #ddd; }
+@media print { .fs-print-chart { break-inside: avoid; } }
+.fs-paper table { table-layout: auto; width: 100%; } .fs-paper td, .fs-paper th { white-space: normal; overflow-wrap: anywhere; }
