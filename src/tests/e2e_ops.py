@@ -312,6 +312,15 @@ with sync_playwright() as p:
     check('POS: 58 mm receipt prints on one page 58 mm wide', pages == 1 and wpt and abs(float(wpt.group(1)) - 58 / 25.4 * 72) < 2, f'{pages} pages, {wpt and wpt.group(1)}')
     pg.click('[data-paper="80"]')
     pg.click('#rnew')
+    # reprint any invoice as a thermal receipt
+    inv_id = one("select id from documents where kind='simplified_invoice' and note='نقطة البيع' order by created_at limit 1")
+    go(pg, f'#/invoices/{inv_id}', 1500); pg.click('#thermal'); pg.wait_for_timeout(600)
+    check('invoice page: thermal receipt reprint', pg.locator('#rcpt').count() == 1 and '(نسخة)' in pg.inner_text('#rcpt') and 'إغلاق' in pg.inner_text('#rnew')
+          and pg.locator('#rcpt svg').count() == 1, pg.inner_text('body')[:200])
+    check('invoice page: reprint keeps the 58 mm choice off by default here', pg.locator('#rcpt.rc58').count() == 0)
+    pg.click('#rnew'); pg.wait_for_timeout(200)
+    check('invoice page: closing the receipt returns to the invoice', pg.locator('#rcpt').count() == 0 and '/invoices/' in pg.url)
+    go(pg, '#/pos', 1200)
     # mobile check on new screens
     pg.set_viewport_size({'width': 390, 'height': 800})
     for h in ['#/bills', '#/mfg', '#/warehouses', '#/expenses', '#/users', '#/reports/pl', '#/reports/vat', '#/payroll', '#/dashboard', '#/pos', '#/projects']:

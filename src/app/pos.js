@@ -70,23 +70,23 @@ async function posView() {
   $('#paycash').onclick = () => pay('cash'); $('#paycard').onclick = () => pay('card');
   drawGrid(); drawCart(); $('#posq').focus();
 }
-function posReceipt(d, method, paid) {
+function posReceipt(d, method, paid, opt = {}) {
   let qr = ''; try { const ts = `${d.issue_date}T${(d.issue_time || '00:00:00').slice(0, 8)}+03:00`;
     qr = QR.svg(QR.encode(QR.ascii(QR.zatcaTLV({ seller: ORG.name_ar, vatNo: ORG.vat_number || '', timestamp: new Date(ts).toISOString().replace('.000', ''), total: (d.total / 100).toFixed(2), vat: (d.vat_total / 100).toFixed(2) }))), 3); } catch { qr = ''; }
   const bg = document.createElement('div'); bg.className = 'drawer-bg receipt-bg';
   const paper = () => { try { return localStorage.getItem(POS_PAPER) === '58' ? '58' : '80'; } catch { return '80'; } };
   bg.innerHTML = `<div class="receipt-wrap"><div class="row no-print rc-paper" role="group" aria-label="مقاس ورق الطابعة" style="gap:6px;justify-content:center;margin-bottom:10px"><span class="xs" style="color:#fff">مقاس الورق:</span>${['58', '80'].map(w => `<button type="button" class="btn sm ${paper() === w ? 'primary' : 'secondary'}" data-paper="${w}" aria-pressed="${paper() === w}">${w} ملم</button>`).join('')}</div><div class="receipt80${paper() === '58' ? ' rc58' : ''}" id="rcpt">
       <div style="text-align:center"><b style="font-size:15px">${esc(ORG.name_ar)}</b><br>${ORG.vat_number ? `الرقم الضريبي <span class="num">${esc(ORG.vat_number)}</span><br>` : ''}${esc(ORG.city || '')}
-        <div style="margin:6px 0;font-weight:700">فاتورة ضريبية مبسطة<br><span style="font-weight:400">Simplified Tax Invoice</span></div></div>
+        <div style="margin:6px 0;font-weight:700">${d.kind === 'tax_invoice' ? 'فاتورة ضريبية<br><span style="font-weight:400">Tax Invoice</span>' : 'فاتورة ضريبية مبسطة<br><span style="font-weight:400">Simplified Tax Invoice</span>'}</div>${opt.reprint ? '<div style="font-size:11px">(نسخة)</div>' : ''}</div>
       <div class="rc-row"><span>الرقم</span><span class="num">${esc(d.number)}</span></div><div class="rc-row"><span>التاريخ</span><span class="num">${esc(d.issue_date)} ${esc((d.issue_time || '').slice(0, 5))}</span></div>
       ${d.party ? `<div class="rc-row"><span>العميل</span><span>${esc(d.party.name)}</span></div>` : ''}<hr>
       ${d.lines.map(l => `<div>${esc(l.description)}</div><div class="rc-row xs"><span class="num">${fq(l.qty)} × ${money(l.unit_price)}</span><span class="num">${money(Number(l.line_net) + Number(l.line_vat))}</span></div>`).join('')}<hr>
       <div class="rc-row"><span>الإجمالي قبل الضريبة</span><span class="num">${money(d.subtotal)}</span></div><div class="rc-row"><span>ضريبة القيمة المضافة 15%</span><span class="num">${money(d.vat_total)}</span></div>
       <div class="rc-row" style="font-weight:800;font-size:15px"><span>الإجمالي</span><span class="num">${money(d.total)} ر.س</span></div>
-      <div class="rc-row"><span>الدفع</span><span>${method === 'cash' ? 'نقداً' : 'شبكة / مدى'}</span></div>
+      ${method ? `<div class="rc-row"><span>الدفع</span><span>${method === 'cash' ? 'نقداً' : 'شبكة / مدى'}</span></div>` : ''}${opt.reprint && d.total - d.amount_paid > 0 ? `<div class="rc-row"><span>المتبقي</span><span class="num">${money(d.total - d.amount_paid)}</span></div>` : ''}
       ${paid ? `<div class="rc-row"><span>المستلم</span><span class="num">${money(paid)}</span></div><div class="rc-row"><span>الباقي</span><span class="num">${money(paid - d.total)}</span></div>` : ''}
       <div style="text-align:center;margin-top:8px">${qr}</div>${ORG.invoice_footer ? `<p style="text-align:center;font-size:11px;margin:6px 0 0">${esc(ORG.invoice_footer)}</p>` : '<p style="text-align:center;font-size:11px;margin:6px 0 0">شكراً لزيارتكم</p>'}</div>
-    <div class="row no-print" style="gap:8px;justify-content:center;margin-top:12px"><button class="btn primary" id="rprint">${icon('down')}طباعة الإيصال</button><button class="btn secondary" id="rnew">بيع جديد</button><a class="btn ghost" href="#/invoices/${esc(d.id)}">عرض الفاتورة</a></div></div>`;
+    <div class="row no-print" style="gap:8px;justify-content:center;margin-top:12px"><button class="btn primary" id="rprint">${icon('down')}طباعة الإيصال</button><button class="btn secondary" id="rnew">${opt.reprint ? 'إغلاق' : 'بيع جديد'}</button>${opt.reprint ? '' : `<a class="btn ghost" href="#/invoices/${esc(d.id)}">عرض الفاتورة</a>`}</div></div>`;
   document.body.append(bg);
   const close = () => { bg.remove(); $('#posq')?.focus(); };
   $('#rnew', bg).onclick = close; bg.onclick = e => { if (e.target === bg) close(); };

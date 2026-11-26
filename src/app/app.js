@@ -396,6 +396,7 @@ async function invoiceView(id) {
   $('#main').innerHTML = `<a class="crumb no-print" href="#/invoices">${icon('chev')} الفواتير</a>
     <div class="page-head no-print"><h1><span class="num">${esc(d.number)}</span></h1>${badge(PAY[d.payment_status])}${badge(ZAT[d.zatca_status] || ZAT.not_sent)}
       <button class="btn secondary" onclick="window.print()">${icon('down')}طباعة / PDF</button>
+      <button class="btn secondary" id="thermal">${icon('receipt')}إيصال حراري</button>
       ${api.mode === 'supabase' && can('sales', 'create') ? '<button class="btn secondary" id="mkcn">إصدار إشعار دائن</button>' : ''}
       ${left > 0 ? `<a class="btn primary" href="#/receipts/new?party=${esc(d.party_id || '')}&doc=${esc(d.id)}">${icon('receipt')}تسجيل دفعة</a>` : ''}</div>
     ${!o.vat_number ? '<p class="note warn no-print" style="margin-bottom:16px">منشأتك بلا رقم ضريبي — رمز QR لن يكون صالحاً لزاتكا. أضفه من الإعدادات.</p>' : ''}
@@ -426,7 +427,7 @@ async function invoiceView(id) {
   wireInvoiceActions(d);
 }
 
-function wireInvoiceActions(d) { if ($('#mkcn')) $('#mkcn').onclick = async e => { e.target.disabled = true;
+function wireInvoiceActions(d) { if ($('#thermal')) $('#thermal').onclick = () => posReceipt(d, null, null, { reprint: true }); if ($('#mkcn')) $('#mkcn').onclick = async e => { e.target.disabled = true;
   try { const nid = await api.convertDocument(d.id, 'credit_note'); toast('أُنشئت مسودة إشعار دائن — عدّل الكميات المرتجعة ثم رحّلها'); location.hash = '#/credit-notes/' + nid + '/edit'; } catch (x) { fail(x); e.target.disabled = false; } }; }
 // ---------- customers ----------
 function partyDrawer(p, after, side = 'customer') {
