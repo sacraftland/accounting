@@ -324,6 +324,15 @@ with sync_playwright() as p:
     import cv2, numpy as np
     img = cv2.imdecode(np.frombuffer(png, np.uint8), 1)
     check('RawBT picture: 384 dots wide, QR readable', img.shape[1] == 384 and img.shape[0] > 400 and cv2.QRCodeDetector().detectAndDecode(img)[0] != '', str(img.shape))
+    raw = base64.b64decode(pg.evaluate("(() => { const i = new Image(); return new Promise(r => { i.onload = () => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; c.getContext('2d').drawImage(i, 0, 0); r(escposRaster(c)); }; i.src = window.__lastReceipt(); }); })()"))
+    # decode the GS v 0 bands back into a picture and read the QR from what the printer would get
+    j, rows = 2, []
+    while raw[j:j+3] == b'\x1dv0':
+        bwid, h = raw[j+4] | raw[j+5] << 8, raw[j+6] | raw[j+7] << 8; band = raw[j+8:j+8+bwid*h]; j += 8 + bwid*h
+        rows += [[0 if (band[r*bwid + x//8] >> (7 - x % 8)) & 1 else 255 for x in range(bwid*8)] for r in range(h)]
+    pic = np.array(rows, dtype=np.uint8); cv2.imwrite(str(SHOTS / 'S67e-escpos-decoded.png'), pic)
+    check('RawBT ESC/POS: init, 48-byte raster rows, cut, QR readable', raw[:2] == b'\x1b@' and raw.endswith(b'\x1dVB\x00') and pic.shape[1] == 384
+          and cv2.QRCodeDetector().detectAndDecode(cv2.cvtColor(pic, cv2.COLOR_GRAY2BGR))[0] != '', str(pic.shape))
     pg.click('[data-paper="80"]'); pg.wait_for_timeout(150)
     pg.click('#rnew'); pg.wait_for_timeout(200)
     check('invoice page: closing the receipt returns to the invoice', pg.locator('#rcpt').count() == 0 and '/invoices/' in pg.url)

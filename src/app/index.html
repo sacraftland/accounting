@@ -3261,7 +3261,7 @@ function posReceipt(d, method, paid, opt = {}) {
     $('#rcpt', bg).classList.toggle('rc58', b.dataset.paper === '58');
     bg.querySelectorAll('[data-paper]').forEach(x => { const on = x === b; x.className = 'btn sm ' + (on ? 'primary' : 'secondary'); x.setAttribute('aria-pressed', on); }); });
   if ($('#rraw', bg)) $('#rraw', bg).onclick = () => { const c = receiptCanvas(d, method, paid, opt, qm, paper() === '58' ? 384 : 576);
-    location.href = 'rawbt:data:image/png;base64,' + c.toDataURL('image/png').split(',')[1]; };
+    location.href = 'rawbt:base64,' + escposRaster(c); };
   $('#rprint', bg).onclick = () => { document.body.classList.add('print-receipt');
     // page = exactly the receipt: paper width × receipt height, so the printer driver neither shrinks an A4 page nor feeds blank paper
     const w = paper() === '58' ? 58 : 80, el = $('#rcpt', bg), st = document.createElement('style'); st.id = 'rc-page';
@@ -3307,6 +3307,21 @@ function receiptCanvas(d, method, paid, opt = {}, qm = null, W = 384) {
   return c;
 }
 window.receiptCanvas = receiptCanvas;
+// Canvas → ESC/POS raster bytes (GS v 0, in bands so small printer buffers keep up) → base64 for RawBT's rawbt:base64 link.
+// Sending printer commands (not a PNG) means RawBT passes them straight to the printer: nothing to decode or rescale.
+function escposRaster(c) {
+  const W = c.width, H = c.height, px = c.getContext('2d').getImageData(0, 0, W, H).data, bw = Math.ceil(W / 8), out = [0x1b, 0x40];
+  for (let y0 = 0; y0 < H; y0 += 128) {
+    const h = Math.min(128, H - y0); out.push(0x1d, 0x76, 0x30, 0, bw & 255, bw >> 8, h & 255, h >> 8);
+    for (let y = y0; y < y0 + h; y++) for (let b = 0; b < bw; b++) { let v = 0;
+      for (let i = 0; i < 8; i++) { const x = b * 8 + i; if (x < W) { const k = (y * W + x) * 4; if (px[k + 3] > 0 && px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114 < 160) v |= 0x80 >> i; } }
+      out.push(v); }
+  }
+  out.push(0x1b, 0x64, 4, 0x1d, 0x56, 0x42, 0);           // feed 4 lines, cut if the printer has a cutter
+  let bin = ''; for (let i = 0; i < out.length; i += 8192) bin += String.fromCharCode.apply(null, out.slice(i, i + 8192));
+  return btoa(bin);
+}
+window.escposRaster = escposRaster;
 
 const POS_ROUTES = [
   [/^#\/pos$/, gate('pos', 'نقطة البيع', 'sales', posView)],
