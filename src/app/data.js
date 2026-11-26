@@ -183,6 +183,8 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/BACKUP_IDS_TAKEN/, 'هذه النسخة استُرجعت من قبل — أعد اختيار الملف ليُجهَّز من جديد'],
+  [/BACKUP_INVALID[: ]*(.*)/, m => 'ملف النسخة غير صالح أو معدّل' + (m[1] ? ` (${m[1]})` : '')],
   [/WAGES_MORE_THAN_OWED/i, 'المبلغ أكبر من الأجور المستحقة للعامل'], [/employees_casual_rate/i, 'أدخل الأجر اليومي أو أجر الساعة للعامل'],
   [/RETURN_MORE_THAN_ISSUED/i, 'لا يمكن إرجاع أكثر مما صُرف للمشروع'], [/ISSUE_PROJECT/i, 'اختر المشروع'], [/ISSUE_SERVICE/i, 'الخدمات لا تُصرف من المخزون'], [/TIMESHEET_POSTED/i, 'الساعات المرحّلة لا تُعدَّل'],
   [/TASK_DATES/i, 'تاريخ الاستحقاق قبل تاريخ البداية'], [/PROJECT_CODE/i, 'رمز المشروع مستخدم'], [/PROJECT_NAME/i, 'أدخل رمز المشروع واسمه'], [/cost_centers_dates/i, 'تاريخ التسليم قبل تاريخ البداية'],
@@ -502,6 +504,15 @@ const SupabaseAPI = (cfg) => {
     async listLeads() { return ok(await sb.from('leads').select('*').eq('org_id', await orgId()).order('created_at', { ascending: false })); },
     async saveLead(l) { const row = nulls({ ...l, org_id: await orgId(), updated_at: new Date().toISOString() }); return l.id ? ok(await sb.from('leads').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leads').insert(row).select().single()); },
     async deleteLead(id) { ok(await sb.from('leads').delete().eq('id', id)); },
+    async exportOrg(source = 'app') { return ok(await sb.rpc('export_org', { p_org: await orgId(), p_source: source })); },
+    async importOrg(data, mode) { return ok(await sb.rpc('import_org', { p_data: data, p_mode: mode, p_target: mode === 'replace' ? await orgId() : null })); },
+    async backupLog() { return ok(await sb.from('backup_log').select('*').eq('org_id', await orgId()).order('at', { ascending: false }).limit(60)); },
+    async dataset(ds, from, to) { return ok(await sb.rpc('report_dataset', { p_org: await orgId(), p_ds: ds, p_from: from, p_to: to })) || []; },
+    async listReports() { return ok(await sb.from('saved_reports').select('*').eq('org_id', await orgId()).order('name')); },
+    async getReport(id) { return ok(await sb.from('saved_reports').select('*').eq('id', id).single()); },
+    async saveReport(r) { const row = { name: r.name, definition: r.definition, pinned: !!r.pinned, org_id: await orgId() };
+      return r.id ? ok(await sb.from('saved_reports').update(row).eq('id', r.id).select().single()) : ok(await sb.from('saved_reports').insert(row).select().single()); },
+    async deleteReport(id) { ok(await sb.from('saved_reports').delete().eq('id', id)); },
     async listStudies() { return ok(await sb.from('feasibility_studies').select('*').eq('org_id', await orgId()).order('updated_at', { ascending: false })); },
     async getStudy(id) { return ok(await sb.from('feasibility_studies').select('*').eq('id', id).single()); },
     async saveStudy(f) { const row = { name: f.name, kind: f.kind, inputs: f.inputs || {}, ai_notes: f.ai_notes || null, status: f.status || 'draft', org_id: await orgId() };

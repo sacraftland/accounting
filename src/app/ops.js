@@ -6,7 +6,7 @@
 
 // ---------- permissions ----------
 const MODULES = [['sales', 'المبيعات'], ['purchases', 'المشتريات'], ['expenses', 'المصروفات'], ['inventory', 'المخزون'], ['manufacturing', 'التصنيع'],
-  ['accounting', 'المحاسبة والقيود'], ['reports', 'التقارير'], ['hr', 'الموارد البشرية'], ['settings', 'إعدادات المنشأة'], ['users', 'المستخدمون والصلاحيات'], ['feasibility', 'دراسات الجدوى']];
+  ['accounting', 'المحاسبة والقيود'], ['reports', 'التقارير'], ['hr', 'الموارد البشرية'], ['settings', 'إعدادات المنشأة'], ['users', 'المستخدمون والصلاحيات'], ['feasibility', 'دراسات الجدوى'], ['backup', 'النسخ الاحتياطي']];
 const ACTIONS = [['view', 'عرض'], ['create', 'إنشاء وتعديل'], ['post', 'اعتماد وترحيل']];
 const can = (m, a = 'view') => { const p = ORG?.perms; if (api.mode !== 'supabase' || !p || p._owner) return true;
   return a === 'view' ? ['view', 'create', 'post'].some(x => p[m]?.includes(x)) : !!p[m]?.includes(a); };
@@ -462,7 +462,7 @@ async function stockDocEditView(id, qs) {
       <p class="note" id="sdhelp" style="margin-bottom:12px"></p>
       <div class="tbl-wrap editor"><table><thead><tr><th style="min-width:200px">الصنف</th><th class="amt">الرصيد الحالي</th><th style="width:140px" id="qh">الكمية</th><th style="width:140px" id="ch">تكلفة الوحدة</th><th style="width:44px"></th></tr></thead><tbody id="sl"></tbody></table></div>
       <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="adds">${icon('plus')}إضافة صنف</button>
-        <button type="button" class="btn ghost sm" id="sdexp">${icon('down')}ورقة جرد Excel (CSV)</button><label class="btn ghost sm" style="cursor:pointer">${icon('plus')}استيراد كميات من Excel (CSV)<input type="file" id="sdimp" accept=".csv,.txt,text/csv" hidden></label></div>
+        <button type="button" class="btn ghost sm" id="sdexp">${icon('down')}ورقة جرد Excel (CSV)</button><label class="btn ghost sm" style="cursor:pointer">${icon('plus')}استيراد كميات من Excel<input type="file" id="sdimp" accept=".xlsx,.csv,.txt,text/csv" hidden></label></div>
       ${field('note', 'ملاحظات', { value: d.note || '' })}
       <p class="help err" id="serr2" role="alert"></p>
       <div class="row" style="justify-content:flex-end;margin-top:16px">${ex ? '<button type="button" class="btn ghost" id="dels" style="color:var(--c-danger)">حذف المسودة</button>' : ''}<a class="btn ghost" href="#/stock">إلغاء</a>

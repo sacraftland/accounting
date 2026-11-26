@@ -12,6 +12,31 @@ function parseCSV(text) {
   if (cur || row.length) { row.push(cur); rows.push(row); }
   return rows.map(r => r.map(c => c.trim())).filter(r => r.some(c => c));
 }
+// read the first sheet of an .xlsx (zip + XML, deflate via the browser) into rows of strings
+async function xlsxRows(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder();
+  let e = u8.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--; if (e < 0) throw new AppError('ملف Excel غير صالح');
+  const n = dv.getUint16(e + 10, true), files = {}; let p = dv.getUint32(e + 16, true);
+  for (let i = 0; i < n; i++) { const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    files[td.decode(u8.subarray(p + 46, p + 46 + nl))] = { method: dv.getUint16(p + 10, true), csize: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) }; p += 46 + nl + xl + cl; }
+  const read = async name => { const f = files[name]; if (!f) return null; const start = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true), data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return td.decode(data);
+    if (f.method !== 8 || !window.DecompressionStream) throw new AppError('المتصفح لا يقرأ هذا الملف — احفظه CSV UTF-8 من Excel');
+    return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text(); };
+  const wb = await read('xl/workbook.xml'), rels = await read('xl/_rels/workbook.xml.rels'); if (!wb) throw new AppError('ملف Excel غير صالح');
+  const rid = (wb.match(/<sheet\b[^>]*r:id="([^"]+)"/) || [])[1]; let target = 'worksheets/sheet1.xml';
+  if (rid && rels) { const m = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map(x => x[0]).find(x => x.includes(`Id="${rid}"`)); const t = m && (m.match(/Target="([^"]+)"/) || [])[1]; if (t) target = t; }
+  const P = new DOMParser(), ss = await read('xl/sharedStrings.xml');
+  const strings = ss ? [...P.parseFromString(ss, 'application/xml').getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const sheet = await read(target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '')); if (!sheet) throw new AppError('ملف Excel بدون أوراق');
+  const rows = [];
+  for (const r of P.parseFromString(sheet, 'application/xml').getElementsByTagName('row')) { const row = [];
+    for (const c of r.getElementsByTagName('c')) { const col = (c.getAttribute('r') || '').replace(/\d+/g, '').split('').reduce((s, ch) => s * 26 + ch.charCodeAt(0) - 64, 0) - 1, t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0]?.textContent ?? '';
+      row[col >= 0 ? col : row.length] = String(t === 's' ? strings[+v] ?? '' : t === 'inlineStr' ? [...c.getElementsByTagName('t')].map(x => x.textContent).join('') : v).trim(); }
+    rows.push(Array.from(row, x => x ?? '')); }
+  return rows.filter(r => r.some(c => c));
+}
+const readSheetRows = async file => /\.xlsx$/i.test(file.name) ? xlsxRows(await file.arrayBuffer()) : parseCSV(await readFileText(file));
 const readFileText = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(file, 'utf-8'); });
 const normH = h => toLatin(String(h || '')).toLowerCase().replace(/[\s_\-ـ:.]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 // field → accepted header spellings (Arabic and English, normalised)
@@ -40,12 +65,12 @@ async function importView(qs) {
     <div class="tabs">${Object.entries(T).map(([k, [t]]) => `<a href="#/import?t=${k}" class="${k === tab ? 'on' : ''}">${t}</a>`).join('')}</div>
     <section class="card" style="max-width:860px"><ol style="margin:0 0 12px;padding-inline-start:20px;line-height:1.9">
       <li>نزّل القالب <button class="btn ghost sm" id="tpl">${icon('down')}قالب ${T[tab][0]} (CSV)</button> أو استخدم ملفك — أول صف أسماء الأعمدة.</li>
-      <li>من Excel: «حفظ باسم» ← <b>CSV UTF-8</b>.</li><li>اختر الملف، راجع المعاينة، ثم اضغط «استيراد».</li></ol>
-      <input type="file" id="csvf" accept=".csv,.txt,text/csv" class="input" aria-label="ملف CSV">
+      <li>ارفع ملف Excel (<b>.xlsx</b>) مباشرة، أو CSV — تُقرأ الورقة الأولى.</li><li>اختر الملف، راجع المعاينة، ثم اضغط «استيراد».</li></ol>
+      <input type="file" id="csvf" accept=".xlsx,.csv,.txt,text/csv" class="input" aria-label="ملف Excel أو CSV">
       <div id="prev" style="margin-top:16px"></div></section>`;
   $('#tpl').onclick = () => csvTemplate(COLS[tab], 'قالب ' + T[tab][0]);
   $('#csvf').onchange = async e => { const file = e.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) return toast('الملف أكبر من 2 ميجابايت', 'bad');
-    const rows = parseCSV(await readFileText(file)); if (rows.length < 2) return $('#prev').innerHTML = '<p class="help err">الملف فارغ أو بدون صف عناوين.</p>';
+    const rows = (await readSheetRows(file)); if (rows.length < 2) return $('#prev').innerHTML = '<p class="help err">الملف فارغ أو بدون صف عناوين.</p>';
     const spec = tab === 'items' ? IMPORT_SPEC.items : IMPORT_SPEC.parties, m = mapHeaders(rows[0], spec), nameKey = tab === 'items' ? 'name_ar' : 'name';
     if (m[nameKey] == null) return $('#prev').innerHTML = `<p class="help err">لم أجد عمود «الاسم». الأعمدة في ملفك: ${esc(rows[0].join('، '))}</p>`;
     const existing = new Set((tab === 'items' ? items.map(i => i.sku || '') : ps.map(p => p.vat_number || '')).filter(Boolean)), names = new Set((tab === 'items' ? items.map(i => i.name_ar) : ps.map(p => p.name)));
@@ -77,7 +102,7 @@ function stockSheetExport(stock, q, wh, whName) {
   dl([['الرمز', 'الاسم', 'الوحدة', 'رصيد النظام', 'الكمية الفعلية'], ...stock.map(s => [s.sku || '', s.name_ar, s.unit, fq(q[s.id + ':' + wh] || 0), ''])], `ورقة جرد ${whName} ${riyadhToday()}`);
 }
 async function stockSheetImport(file, stock) {
-  const rows = parseCSV(await readFileText(file)); if (rows.length < 2) throw new AppError('الملف فارغ');
+  const rows = (await readSheetRows(file)); if (rows.length < 2) throw new AppError('الملف فارغ');
   const m = mapHeaders(rows[0], IMPORT_SPEC.count); if (m.qty == null) throw new AppError('لم أجد عمود «الكمية» أو «الكمية الفعلية»');
   const bySku = Object.fromEntries(stock.filter(s => s.sku).map(s => [toLatin(s.sku).toLowerCase(), s])), byBar = Object.fromEntries(stock.filter(s => s.barcode).map(s => [s.barcode, s])), byName = Object.fromEntries(stock.map(s => [s.name_ar.trim(), s]));
   const lines = [], missing = [];

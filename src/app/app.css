@@ -281,3 +281,31 @@ details summary { cursor: pointer; margin-top: 8px; }
 [data-theme=dark] .fs-paper .chart .tick { fill: #555; } [data-theme=dark] .fs-paper .chart .grid { stroke: #ddd; }
 @media print { .fs-print-chart { break-inside: avoid; } }
 .fs-paper table { table-layout: auto; width: 100%; } .fs-paper td, .fs-paper th { white-space: normal; overflow-wrap: anywhere; }
+
+/* ---------- backup & report builder ---------- */
+.bk-steps { margin: 0; padding-inline-start: 20px; display: grid; gap: 10px; line-height: 1.8; }
+.bk-cmd { background: var(--c-surface-2); border-radius: 8px; padding: 10px 12px; font-size: 12px; overflow-x: auto; margin: 6px 0 0; text-align: left; }
+.rb-grid { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .rb-grid { grid-template-columns: 1fr; } }
+.rb-card { display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: var(--c-text); }
+.rb-card:hover { border-color: var(--c-accent); }
+.rb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 13px; }
+.rb-flt { display: grid; grid-template-columns: 1fr 0.9fr 1fr auto; gap: 6px; align-items: center; }
+.rb-flt .input, #rbcfg [data-ma], #rbcfg [data-mf] { height: 34px; font-size: 13px; padding: 0 8px; }
+.rb-sort { all: unset; cursor: pointer; font-weight: inherit; }
+.rb-sort:focus-visible { outline: 2px solid var(--c-accent); border-radius: 4px; }
+.rb-chart { margin: 0 0 16px; display: grid; gap: 6px; }
+.rb-bar { display: grid; grid-template-columns: minmax(90px, 200px) 1fr auto; gap: 10px; align-items: center; font-size: 12px; }
+.rb-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-t { height: 14px; display: flex; }
+.rb-t i { display: block; height: 100%; background: #257de0; border-radius: 0 4px 4px 0; min-width: 2px; }
+[dir=rtl] .rb-t i { border-radius: 4px 0 0 4px; }
+.rb-t i.neg { background: #f47230; }
+[data-theme=dark] .rb-t i { background: #338ced; } [data-theme=dark] .rb-t i.neg { background: #e76624; }
+.rb-v { min-width: 90px; text-align: end; }
+#rbtbl tfoot td { border-top: 2px solid var(--c-border); }
+@media print { .rb-grid { display: block; } #rbout { border: 0; box-shadow: none; padding: 0; } .rb-sort { all: unset; } }
+.rb-m { display: grid; grid-template-columns: 0.8fr 1.3fr auto; gap: 6px; align-items: center; }
+.bk-cmds { margin-top: 6px; border-collapse: collapse; font-size: 13px; }
+.bk-cmds td { padding: 4px 8px; border-bottom: 1px solid var(--c-border); vertical-align: top; }
+.bk-cmds code { background: var(--c-surface-2); border-radius: 6px; padding: 2px 8px; white-space: nowrap; font-size: 12px; display: inline-block; }

@@ -94,11 +94,11 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
   ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
   ['assets', 'box', 'الأصول الثابتة', 'accounting'],
-  ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
+  ['reports', 'chart', 'التقارير المالية', 'reports|accounting'], ['report-builder', 'chart', 'منشئ التقارير', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
   ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'], ['feasibility', 'chart', 'دراسات الجدوى', 'feasibility'],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['backup', 'lock', 'النسخ الاحتياطي', 'backup'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -584,7 +584,7 @@ async function trialBalanceView() {
 // ---------- settings ----------
 async function settingsView() {
   shell('settings', loading()); const o = ORG;
-  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a></div>
+  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a>${api.mode === 'supabase' && can('backup') ? `<a class="btn secondary" href="#/backup">${icon('lock')}النسخ الاحتياطي</a>` : ''}</div>
     <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate ${can('settings', 'create') ? '' : 'inert'}>
       <fieldset><legend>الشعار</legend><div class="row"><div class="logo-prev" id="lp">${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="الشعار الحالي">` : icon('box')}</div>
         <div><input type="file" id="logo" accept="image/png,image/jpeg,image/svg+xml" aria-describedby="lh"><p class="help" id="lh">PNG أو JPG، حتى 300 كيلوبايت. يظهر على الفواتير وأعلى القائمة.</p>${o.logo_path ? '<button type="button" class="btn ghost sm" id="rmlogo">إزالة الشعار</button>' : ''}</div></div></fieldset>
@@ -656,6 +656,8 @@ const ROUTES = [
   ...THEME_ROUTES,
   ...DESIGN_ROUTES,
   ...FEAS_ROUTES,
+  ...BACKUP_ROUTES,
+  ...RB_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

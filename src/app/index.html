@@ -520,6 +520,34 @@ details summary { cursor: pointer; margin-top: 8px; }
 [data-theme=dark] .fs-paper .chart .tick { fill: #555; } [data-theme=dark] .fs-paper .chart .grid { stroke: #ddd; }
 @media print { .fs-print-chart { break-inside: avoid; } }
 .fs-paper table { table-layout: auto; width: 100%; } .fs-paper td, .fs-paper th { white-space: normal; overflow-wrap: anywhere; }
+
+/* ---------- backup & report builder ---------- */
+.bk-steps { margin: 0; padding-inline-start: 20px; display: grid; gap: 10px; line-height: 1.8; }
+.bk-cmd { background: var(--c-surface-2); border-radius: 8px; padding: 10px 12px; font-size: 12px; overflow-x: auto; margin: 6px 0 0; text-align: left; }
+.rb-grid { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .rb-grid { grid-template-columns: 1fr; } }
+.rb-card { display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: var(--c-text); }
+.rb-card:hover { border-color: var(--c-accent); }
+.rb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 13px; }
+.rb-flt { display: grid; grid-template-columns: 1fr 0.9fr 1fr auto; gap: 6px; align-items: center; }
+.rb-flt .input, #rbcfg [data-ma], #rbcfg [data-mf] { height: 34px; font-size: 13px; padding: 0 8px; }
+.rb-sort { all: unset; cursor: pointer; font-weight: inherit; }
+.rb-sort:focus-visible { outline: 2px solid var(--c-accent); border-radius: 4px; }
+.rb-chart { margin: 0 0 16px; display: grid; gap: 6px; }
+.rb-bar { display: grid; grid-template-columns: minmax(90px, 200px) 1fr auto; gap: 10px; align-items: center; font-size: 12px; }
+.rb-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-t { height: 14px; display: flex; }
+.rb-t i { display: block; height: 100%; background: #257de0; border-radius: 0 4px 4px 0; min-width: 2px; }
+[dir=rtl] .rb-t i { border-radius: 4px 0 0 4px; }
+.rb-t i.neg { background: #f47230; }
+[data-theme=dark] .rb-t i { background: #338ced; } [data-theme=dark] .rb-t i.neg { background: #e76624; }
+.rb-v { min-width: 90px; text-align: end; }
+#rbtbl tfoot td { border-top: 2px solid var(--c-border); }
+@media print { .rb-grid { display: block; } #rbout { border: 0; box-shadow: none; padding: 0; } .rb-sort { all: unset; } }
+.rb-m { display: grid; grid-template-columns: 0.8fr 1.3fr auto; gap: 6px; align-items: center; }
+.bk-cmds { margin-top: 6px; border-collapse: collapse; font-size: 13px; }
+.bk-cmds td { padding: 4px 8px; border-bottom: 1px solid var(--c-border); vertical-align: top; }
+.bk-cmds code { background: var(--c-surface-2); border-radius: 6px; padding: 2px 8px; white-space: nowrap; font-size: 12px; display: inline-block; }
 </style>
 </head>
 <body>
@@ -830,6 +858,8 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/BACKUP_IDS_TAKEN/, 'هذه النسخة استُرجعت من قبل — أعد اختيار الملف ليُجهَّز من جديد'],
+  [/BACKUP_INVALID[: ]*(.*)/, m => 'ملف النسخة غير صالح أو معدّل' + (m[1] ? ` (${m[1]})` : '')],
   [/WAGES_MORE_THAN_OWED/i, 'المبلغ أكبر من الأجور المستحقة للعامل'], [/employees_casual_rate/i, 'أدخل الأجر اليومي أو أجر الساعة للعامل'],
   [/RETURN_MORE_THAN_ISSUED/i, 'لا يمكن إرجاع أكثر مما صُرف للمشروع'], [/ISSUE_PROJECT/i, 'اختر المشروع'], [/ISSUE_SERVICE/i, 'الخدمات لا تُصرف من المخزون'], [/TIMESHEET_POSTED/i, 'الساعات المرحّلة لا تُعدَّل'],
   [/TASK_DATES/i, 'تاريخ الاستحقاق قبل تاريخ البداية'], [/PROJECT_CODE/i, 'رمز المشروع مستخدم'], [/PROJECT_NAME/i, 'أدخل رمز المشروع واسمه'], [/cost_centers_dates/i, 'تاريخ التسليم قبل تاريخ البداية'],
@@ -1149,6 +1179,15 @@ const SupabaseAPI = (cfg) => {
     async listLeads() { return ok(await sb.from('leads').select('*').eq('org_id', await orgId()).order('created_at', { ascending: false })); },
     async saveLead(l) { const row = nulls({ ...l, org_id: await orgId(), updated_at: new Date().toISOString() }); return l.id ? ok(await sb.from('leads').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leads').insert(row).select().single()); },
     async deleteLead(id) { ok(await sb.from('leads').delete().eq('id', id)); },
+    async exportOrg(source = 'app') { return ok(await sb.rpc('export_org', { p_org: await orgId(), p_source: source })); },
+    async importOrg(data, mode) { return ok(await sb.rpc('import_org', { p_data: data, p_mode: mode, p_target: mode === 'replace' ? await orgId() : null })); },
+    async backupLog() { return ok(await sb.from('backup_log').select('*').eq('org_id', await orgId()).order('at', { ascending: false }).limit(60)); },
+    async dataset(ds, from, to) { return ok(await sb.rpc('report_dataset', { p_org: await orgId(), p_ds: ds, p_from: from, p_to: to })) || []; },
+    async listReports() { return ok(await sb.from('saved_reports').select('*').eq('org_id', await orgId()).order('name')); },
+    async getReport(id) { return ok(await sb.from('saved_reports').select('*').eq('id', id).single()); },
+    async saveReport(r) { const row = { name: r.name, definition: r.definition, pinned: !!r.pinned, org_id: await orgId() };
+      return r.id ? ok(await sb.from('saved_reports').update(row).eq('id', r.id).select().single()) : ok(await sb.from('saved_reports').insert(row).select().single()); },
+    async deleteReport(id) { ok(await sb.from('saved_reports').delete().eq('id', id)); },
     async listStudies() { return ok(await sb.from('feasibility_studies').select('*').eq('org_id', await orgId()).order('updated_at', { ascending: false })); },
     async getStudy(id) { return ok(await sb.from('feasibility_studies').select('*').eq('id', id).single()); },
     async saveStudy(f) { const row = { name: f.name, kind: f.kind, inputs: f.inputs || {}, ai_notes: f.ai_notes || null, status: f.status || 'draft', org_id: await orgId() };
@@ -1311,11 +1350,11 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
   ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
   ['assets', 'box', 'الأصول الثابتة', 'accounting'],
-  ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
+  ['reports', 'chart', 'التقارير المالية', 'reports|accounting'], ['report-builder', 'chart', 'منشئ التقارير', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
   ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'], ['feasibility', 'chart', 'دراسات الجدوى', 'feasibility'],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['backup', 'lock', 'النسخ الاحتياطي', 'backup'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -1801,7 +1840,7 @@ async function trialBalanceView() {
 // ---------- settings ----------
 async function settingsView() {
   shell('settings', loading()); const o = ORG;
-  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a></div>
+  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a>${api.mode === 'supabase' && can('backup') ? `<a class="btn secondary" href="#/backup">${icon('lock')}النسخ الاحتياطي</a>` : ''}</div>
     <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate ${can('settings', 'create') ? '' : 'inert'}>
       <fieldset><legend>الشعار</legend><div class="row"><div class="logo-prev" id="lp">${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="الشعار الحالي">` : icon('box')}</div>
         <div><input type="file" id="logo" accept="image/png,image/jpeg,image/svg+xml" aria-describedby="lh"><p class="help" id="lh">PNG أو JPG، حتى 300 كيلوبايت. يظهر على الفواتير وأعلى القائمة.</p>${o.logo_path ? '<button type="button" class="btn ghost sm" id="rmlogo">إزالة الشعار</button>' : ''}</div></div></fieldset>
@@ -1860,7 +1899,7 @@ async function seedDemo() {
 
 // ---------- permissions ----------
 const MODULES = [['sales', 'المبيعات'], ['purchases', 'المشتريات'], ['expenses', 'المصروفات'], ['inventory', 'المخزون'], ['manufacturing', 'التصنيع'],
-  ['accounting', 'المحاسبة والقيود'], ['reports', 'التقارير'], ['hr', 'الموارد البشرية'], ['settings', 'إعدادات المنشأة'], ['users', 'المستخدمون والصلاحيات'], ['feasibility', 'دراسات الجدوى']];
+  ['accounting', 'المحاسبة والقيود'], ['reports', 'التقارير'], ['hr', 'الموارد البشرية'], ['settings', 'إعدادات المنشأة'], ['users', 'المستخدمون والصلاحيات'], ['feasibility', 'دراسات الجدوى'], ['backup', 'النسخ الاحتياطي']];
 const ACTIONS = [['view', 'عرض'], ['create', 'إنشاء وتعديل'], ['post', 'اعتماد وترحيل']];
 const can = (m, a = 'view') => { const p = ORG?.perms; if (api.mode !== 'supabase' || !p || p._owner) return true;
   return a === 'view' ? ['view', 'create', 'post'].some(x => p[m]?.includes(x)) : !!p[m]?.includes(a); };
@@ -2316,7 +2355,7 @@ async function stockDocEditView(id, qs) {
       <p class="note" id="sdhelp" style="margin-bottom:12px"></p>
       <div class="tbl-wrap editor"><table><thead><tr><th style="min-width:200px">الصنف</th><th class="amt">الرصيد الحالي</th><th style="width:140px" id="qh">الكمية</th><th style="width:140px" id="ch">تكلفة الوحدة</th><th style="width:44px"></th></tr></thead><tbody id="sl"></tbody></table></div>
       <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="adds">${icon('plus')}إضافة صنف</button>
-        <button type="button" class="btn ghost sm" id="sdexp">${icon('down')}ورقة جرد Excel (CSV)</button><label class="btn ghost sm" style="cursor:pointer">${icon('plus')}استيراد كميات من Excel (CSV)<input type="file" id="sdimp" accept=".csv,.txt,text/csv" hidden></label></div>
+        <button type="button" class="btn ghost sm" id="sdexp">${icon('down')}ورقة جرد Excel (CSV)</button><label class="btn ghost sm" style="cursor:pointer">${icon('plus')}استيراد كميات من Excel<input type="file" id="sdimp" accept=".xlsx,.csv,.txt,text/csv" hidden></label></div>
       ${field('note', 'ملاحظات', { value: d.note || '' })}
       <p class="help err" id="serr2" role="alert"></p>
       <div class="row" style="justify-content:flex-end;margin-top:16px">${ex ? '<button type="button" class="btn ghost" id="dels" style="color:var(--c-danger)">حذف المسودة</button>' : ''}<a class="btn ghost" href="#/stock">إلغاء</a>
@@ -3632,6 +3671,31 @@ function parseCSV(text) {
   if (cur || row.length) { row.push(cur); rows.push(row); }
   return rows.map(r => r.map(c => c.trim())).filter(r => r.some(c => c));
 }
+// read the first sheet of an .xlsx (zip + XML, deflate via the browser) into rows of strings
+async function xlsxRows(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder();
+  let e = u8.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--; if (e < 0) throw new AppError('ملف Excel غير صالح');
+  const n = dv.getUint16(e + 10, true), files = {}; let p = dv.getUint32(e + 16, true);
+  for (let i = 0; i < n; i++) { const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    files[td.decode(u8.subarray(p + 46, p + 46 + nl))] = { method: dv.getUint16(p + 10, true), csize: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) }; p += 46 + nl + xl + cl; }
+  const read = async name => { const f = files[name]; if (!f) return null; const start = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true), data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return td.decode(data);
+    if (f.method !== 8 || !window.DecompressionStream) throw new AppError('المتصفح لا يقرأ هذا الملف — احفظه CSV UTF-8 من Excel');
+    return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text(); };
+  const wb = await read('xl/workbook.xml'), rels = await read('xl/_rels/workbook.xml.rels'); if (!wb) throw new AppError('ملف Excel غير صالح');
+  const rid = (wb.match(/<sheet\b[^>]*r:id="([^"]+)"/) || [])[1]; let target = 'worksheets/sheet1.xml';
+  if (rid && rels) { const m = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map(x => x[0]).find(x => x.includes(`Id="${rid}"`)); const t = m && (m.match(/Target="([^"]+)"/) || [])[1]; if (t) target = t; }
+  const P = new DOMParser(), ss = await read('xl/sharedStrings.xml');
+  const strings = ss ? [...P.parseFromString(ss, 'application/xml').getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const sheet = await read(target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '')); if (!sheet) throw new AppError('ملف Excel بدون أوراق');
+  const rows = [];
+  for (const r of P.parseFromString(sheet, 'application/xml').getElementsByTagName('row')) { const row = [];
+    for (const c of r.getElementsByTagName('c')) { const col = (c.getAttribute('r') || '').replace(/\d+/g, '').split('').reduce((s, ch) => s * 26 + ch.charCodeAt(0) - 64, 0) - 1, t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0]?.textContent ?? '';
+      row[col >= 0 ? col : row.length] = String(t === 's' ? strings[+v] ?? '' : t === 'inlineStr' ? [...c.getElementsByTagName('t')].map(x => x.textContent).join('') : v).trim(); }
+    rows.push(Array.from(row, x => x ?? '')); }
+  return rows.filter(r => r.some(c => c));
+}
+const readSheetRows = async file => /\.xlsx$/i.test(file.name) ? xlsxRows(await file.arrayBuffer()) : parseCSV(await readFileText(file));
 const readFileText = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(file, 'utf-8'); });
 const normH = h => toLatin(String(h || '')).toLowerCase().replace(/[\s_\-ـ:.]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 // field → accepted header spellings (Arabic and English, normalised)
@@ -3660,12 +3724,12 @@ async function importView(qs) {
     <div class="tabs">${Object.entries(T).map(([k, [t]]) => `<a href="#/import?t=${k}" class="${k === tab ? 'on' : ''}">${t}</a>`).join('')}</div>
     <section class="card" style="max-width:860px"><ol style="margin:0 0 12px;padding-inline-start:20px;line-height:1.9">
       <li>نزّل القالب <button class="btn ghost sm" id="tpl">${icon('down')}قالب ${T[tab][0]} (CSV)</button> أو استخدم ملفك — أول صف أسماء الأعمدة.</li>
-      <li>من Excel: «حفظ باسم» ← <b>CSV UTF-8</b>.</li><li>اختر الملف، راجع المعاينة، ثم اضغط «استيراد».</li></ol>
-      <input type="file" id="csvf" accept=".csv,.txt,text/csv" class="input" aria-label="ملف CSV">
+      <li>ارفع ملف Excel (<b>.xlsx</b>) مباشرة، أو CSV — تُقرأ الورقة الأولى.</li><li>اختر الملف، راجع المعاينة، ثم اضغط «استيراد».</li></ol>
+      <input type="file" id="csvf" accept=".xlsx,.csv,.txt,text/csv" class="input" aria-label="ملف Excel أو CSV">
       <div id="prev" style="margin-top:16px"></div></section>`;
   $('#tpl').onclick = () => csvTemplate(COLS[tab], 'قالب ' + T[tab][0]);
   $('#csvf').onchange = async e => { const file = e.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) return toast('الملف أكبر من 2 ميجابايت', 'bad');
-    const rows = parseCSV(await readFileText(file)); if (rows.length < 2) return $('#prev').innerHTML = '<p class="help err">الملف فارغ أو بدون صف عناوين.</p>';
+    const rows = (await readSheetRows(file)); if (rows.length < 2) return $('#prev').innerHTML = '<p class="help err">الملف فارغ أو بدون صف عناوين.</p>';
     const spec = tab === 'items' ? IMPORT_SPEC.items : IMPORT_SPEC.parties, m = mapHeaders(rows[0], spec), nameKey = tab === 'items' ? 'name_ar' : 'name';
     if (m[nameKey] == null) return $('#prev').innerHTML = `<p class="help err">لم أجد عمود «الاسم». الأعمدة في ملفك: ${esc(rows[0].join('، '))}</p>`;
     const existing = new Set((tab === 'items' ? items.map(i => i.sku || '') : ps.map(p => p.vat_number || '')).filter(Boolean)), names = new Set((tab === 'items' ? items.map(i => i.name_ar) : ps.map(p => p.name)));
@@ -3697,7 +3761,7 @@ function stockSheetExport(stock, q, wh, whName) {
   dl([['الرمز', 'الاسم', 'الوحدة', 'رصيد النظام', 'الكمية الفعلية'], ...stock.map(s => [s.sku || '', s.name_ar, s.unit, fq(q[s.id + ':' + wh] || 0), ''])], `ورقة جرد ${whName} ${riyadhToday()}`);
 }
 async function stockSheetImport(file, stock) {
-  const rows = parseCSV(await readFileText(file)); if (rows.length < 2) throw new AppError('الملف فارغ');
+  const rows = (await readSheetRows(file)); if (rows.length < 2) throw new AppError('الملف فارغ');
   const m = mapHeaders(rows[0], IMPORT_SPEC.count); if (m.qty == null) throw new AppError('لم أجد عمود «الكمية» أو «الكمية الفعلية»');
   const bySku = Object.fromEntries(stock.filter(s => s.sku).map(s => [toLatin(s.sku).toLowerCase(), s])), byBar = Object.fromEntries(stock.filter(s => s.barcode).map(s => [s.barcode, s])), byName = Object.fromEntries(stock.map(s => [s.name_ar.trim(), s]));
   const lines = [], missing = [];
@@ -4890,6 +4954,416 @@ const FEAS_ROUTES = [
 ];
 window.__fs = { fsDefaults, feasCalc };   // exposed for the formula tests
 
+// =====================================================================
+// Full backup & restore, export of every table to Excel, and the files for
+// the dedicated Linux backup computer. Also a tiny .xlsx writer used by the
+// report builder. Inserted after feasibility.js.
+// =====================================================================
+const BACKUP_PY = "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n\"\"\"\u0643\u0631\u0627\u0641\u062a \u0644\u0627\u0646\u062f \u2014 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a \u0627\u0644\u062a\u0644\u0642\u0627\u0626\u064a \u0639\u0644\u0649 \u0643\u0645\u0628\u064a\u0648\u062a\u0631 \u0644\u064a\u0646\u0643\u0633 \u0645\u062e\u0635\u0635.\n\n\u064a\u0633\u062d\u0628 \u0646\u0633\u062e\u0629 \u0643\u0627\u0645\u0644\u0629 \u0645\u0646 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0634\u0631\u0643\u0629 \u0643\u0644 \u0644\u064a\u0644\u0629 \u0648\u064a\u062d\u0641\u0638\u0647\u0627 \u0645\u0636\u063a\u0648\u0637\u0629 \u0641\u064a \u0645\u062c\u0644\u062f \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0643\u0645\u0628\u064a\u0648\u062a\u0631\u060c\n\u0648\u064a\u062d\u062a\u0641\u0638 \u0628\u0622\u062e\u0631 30 \u0646\u0633\u062e\u0629 \u064a\u0648\u0645\u064a\u0629 + \u0646\u0633\u062e\u0629 \u0644\u0643\u0644 \u0634\u0647\u0631 \u0644\u0645\u062f\u0629 12 \u0634\u0647\u0631\u0627\u064b\u060c \u0648\u064a\u062a\u062d\u0642\u0642 \u0645\u0646 \u0633\u0644\u0627\u0645\u0629 \u0643\u0644 \u0645\u0644\u0641.\n\u0644\u0627 \u064a\u062d\u062a\u0627\u062c \u0623\u064a \u0645\u0643\u062a\u0628\u0629 \u0625\u0636\u0627\u0641\u064a\u0629: Python 3.8+ \u0641\u0642\u0637.\n\n\u0627\u0644\u0623\u0648\u0627\u0645\u0631:\n  python3 craftland-backup.py setup      \u0625\u0639\u062f\u0627\u062f \u0623\u0648\u0644 \u0645\u0631\u0629 (\u0627\u0644\u0628\u0631\u064a\u062f \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0648\u0645\u062c\u0644\u062f \u0627\u0644\u062d\u0641\u0638)\n  python3 craftland-backup.py run        \u0646\u0633\u062e\u0629 \u0627\u0644\u0622\u0646\n  python3 craftland-backup.py install    \u062a\u0634\u063a\u064a\u0644 \u062a\u0644\u0642\u0627\u0626\u064a \u0643\u0644 \u0644\u064a\u0644\u0629 (systemd)\n  python3 craftland-backup.py status     \u0622\u062e\u0631 \u0627\u0644\u0646\u0633\u062e \u0648\u0645\u0648\u0639\u062f \u0627\u0644\u0642\u0627\u062f\u0645\u0629\n  python3 craftland-backup.py verify [\u0645\u0644\u0641]   \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0633\u0644\u0627\u0645\u0629 \u0646\u0633\u062e\u0629\n  python3 craftland-backup.py uninstall  \u0625\u064a\u0642\u0627\u0641 \u0627\u0644\u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u062a\u0644\u0642\u0627\u0626\u064a\n\"\"\"\nimport argparse, datetime, getpass, gzip, hashlib, json, os, pathlib, shutil, subprocess, sys, time, urllib.error, urllib.request\n\nURL = '__URL__'.rstrip('/')\nKEY = '__KEY__'          # publishable key (public by design) \u2014 never put a secret / service key here\nORG = '__ORG__'\nCOMPANY = '__NAME__'\n\nHOME = pathlib.Path.home()\nCFG_DIR = pathlib.Path(os.environ.get('CRAFTLAND_BACKUP_CONFIG', HOME / '.config' / 'craftland-backup'))\nCRED, CONF = CFG_DIR / 'credentials.json', CFG_DIR / 'config.json'\nDEFAULTS = {'dir': str(HOME / 'craftland-backups'), 'keep_daily': 30, 'keep_monthly': 12, 'mirror_dir': ''}\nPREFIX = 'craftland-'\n\n\ndef conf():\n    c = dict(DEFAULTS)\n    if CONF.exists(): c.update(json.loads(CONF.read_text(encoding='utf-8')))\n    return c\n\n\ndef log(msg, c=None):\n    line = f\"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  {msg}\"\n    print(line, flush=True)\n    try:\n        d = pathlib.Path((c or conf())['dir']); d.mkdir(parents=True, exist_ok=True)\n        with open(d / 'backup.log', 'a', encoding='utf-8') as f: f.write(line + '\\n')\n    except OSError: pass\n\n\ndef http(method, path, body=None, token=None, timeout=300):\n    data = None if body is None else json.dumps(body).encode()\n    r = urllib.request.Request(URL + path, data=data, method=method, headers={\n        'apikey': KEY, 'Authorization': 'Bearer ' + (token or KEY), 'Content-Type': 'application/json', 'Accept': 'application/json'})\n    try:\n        with urllib.request.urlopen(r, timeout=timeout) as res: return res.read()\n    except urllib.error.HTTPError as e:\n        detail = e.read().decode('utf-8', 'replace')[:300]\n        raise RuntimeError(f'\u0627\u0644\u062e\u0627\u062f\u0645 \u0631\u062f \u0628\u062e\u0637\u0623 {e.code}: {detail}') from None\n    except urllib.error.URLError as e:\n        raise RuntimeError(f'\u062a\u0639\u0630\u0631 \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u0627\u0644\u062e\u0627\u062f\u0645: {e.reason}') from None\n\n\ndef login():\n    if not CRED.exists(): raise RuntimeError('\u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u0625\u0639\u062f\u0627\u062f \u0628\u0639\u062f \u2014 \u0634\u063a\u0651\u0644: python3 craftland-backup.py setup')\n    cr = json.loads(CRED.read_text(encoding='utf-8'))\n    tok = json.loads(http('POST', '/auth/v1/token?grant_type=password', {'email': cr['email'], 'password': cr['password']}, timeout=60))\n    if not tok.get('access_token'): raise RuntimeError('\u0641\u0634\u0644 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u2014 \u062a\u062d\u0642\u0642 \u0645\u0646 \u0627\u0644\u0628\u0631\u064a\u062f \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 (\u0634\u063a\u0651\u0644 setup \u0645\u0646 \u062c\u062f\u064a\u062f)')\n    return tok['access_token']\n\n\ndef check_backup(raw):\n    b = json.loads(raw)\n    if b.get('format') != 'craftland-backup' or b.get('version') != 1: raise RuntimeError('\u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0645\u0633\u062a\u0644\u0645 \u0644\u064a\u0633 \u0646\u0633\u062e\u0629 \u0627\u062d\u062a\u064a\u0627\u0637\u064a\u0629 \u0635\u0627\u0644\u062d\u0629')\n    if b.get('org_id') != ORG: raise RuntimeError('\u0627\u0644\u0646\u0633\u062e\u0629 \u0644\u0634\u0631\u0643\u0629 \u0623\u062e\u0631\u0649')\n    t = b.get('tables') or {}\n    if 'accounts' not in t or not t['accounts']: raise RuntimeError('\u0627\u0644\u0646\u0633\u062e\u0629 \u0646\u0627\u0642\u0635\u0629: \u0644\u0627 \u062a\u0648\u062c\u062f \u0634\u062c\u0631\u0629 \u062d\u0633\u0627\u0628\u0627\u062a')\n    return b, sum(len(v) for v in t.values()), len(t)\n\n\ndef sha256(p):\n    h = hashlib.sha256()\n    with open(p, 'rb') as f:\n        for chunk in iter(lambda: f.read(1 << 20), b''): h.update(chunk)\n    return h.hexdigest()\n\n\ndef rotate(d, keep_daily, keep_monthly):\n    files = sorted(d.glob(PREFIX + '*.json.gz'), reverse=True)          # newest first (names sort by date)\n    month = lambda f: f.name[len(PREFIX):len(PREFIX) + 7]                # YYYY-MM\n    keep, have, months = set(files[:keep_daily]), {month(f) for f in files[:keep_daily]}, {}\n    for f in files[keep_daily:]:                                         # then one per older month\n        m = month(f)\n        if m not in have and m not in months and len(months) < keep_monthly: months[m] = f\n    keep |= set(months.values())\n    for f in files:\n        if f not in keep:\n            f.unlink(missing_ok=True); pathlib.Path(str(f) + '.sha256').unlink(missing_ok=True)\n\n\ndef run():\n    c = conf(); d = pathlib.Path(c['dir']); d.mkdir(parents=True, exist_ok=True)\n    last = None\n    for attempt in range(1, 4):\n        try:\n            token = login()\n            raw = http('POST', '/rest/v1/rpc/export_org', {'p_org': ORG, 'p_source': 'script'}, token)\n            b, rows, tables = check_backup(raw)\n            name = f\"{PREFIX}{datetime.datetime.now().strftime('%Y-%m-%d_%H%M')}.json.gz\"\n            tmp = d / (name + '.part')\n            with gzip.open(tmp, 'wb', compresslevel=6) as f: f.write(raw)\n            with gzip.open(tmp, 'rb') as f: check_backup(f.read())          # read it back before trusting it\n            final = d / name; os.replace(tmp, final)\n            digest = sha256(final); pathlib.Path(str(final) + '.sha256').write_text(f'{digest}  {name}\\n', encoding='utf-8')\n            if c.get('mirror_dir'):\n                m = pathlib.Path(c['mirror_dir'])\n                if m.is_dir():\n                    shutil.copy2(final, m / name); shutil.copy2(str(final) + '.sha256', m / (name + '.sha256')); rotate(m, c['keep_daily'], c['keep_monthly'])\n                else: log(f'\u062a\u0646\u0628\u064a\u0647: \u0645\u062c\u0644\u062f \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u062b\u0627\u0646\u064a\u0629 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d ({m}) \u2014 \u062d\u064f\u0641\u0638\u062a \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0623\u0633\u0627\u0633\u064a\u0629 \u0641\u0642\u0637', c)\n            rotate(d, c['keep_daily'], c['keep_monthly'])\n            (d / 'last_ok.json').write_text(json.dumps({'at': datetime.datetime.now().isoformat(timespec='seconds'), 'file': name, 'rows': rows, 'tables': tables, 'sha256': digest}, ensure_ascii=False), encoding='utf-8')\n            log(f'\u2713 \u0646\u0633\u062e\u0629 \u0646\u0627\u062c\u062d\u0629: {name} \u2014 {tables} \u062c\u062f\u0648\u0644\u060c {rows:,} \u0633\u062c\u0644\u060c {final.stat().st_size / 1024:,.0f} \u0643\u064a\u0644\u0648\u0628\u0627\u064a\u062a', c)\n            return 0\n        except Exception as e:   # noqa: BLE001 \u2014 keep trying, then report\n            last = e; log(f'\u2717 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629 {attempt}: {e}', c)\n            for p in d.glob('*.part'): p.unlink(missing_ok=True)\n            if attempt < 3: time.sleep(float(os.environ.get('CRAFTLAND_BACKUP_RETRY_WAIT', 30)) * attempt)\n    log(f'\u2717 \u0641\u0634\u0644 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a: {last}', c)\n    return 1\n\n\ndef setup():\n    print(f'\u0625\u0639\u062f\u0627\u062f \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a \u0644\u0640 \u00ab{COMPANY}\u00bb\\n')\n    print('\u0627\u0633\u062a\u062e\u062f\u0645 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645 \u0627\u0644\u0645\u062e\u0635\u0635 \u0644\u0644\u0646\u0633\u062e (\u0635\u0644\u0627\u062d\u064a\u0629 \u00ab\u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a \u2014 \u0639\u0631\u0636\u00bb \u0641\u0642\u0637)\u060c \u0648\u0644\u064a\u0633 \u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u0627\u0644\u0643.\\n')\n    email = input('\u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0644\u062d\u0633\u0627\u0628 \u0627\u0644\u0646\u0633\u062e: ').strip()\n    while True:\n        pw = getpass.getpass('\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 (\u0644\u0627 \u062a\u0638\u0647\u0631 \u0623\u062b\u0646\u0627\u0621 \u0627\u0644\u0643\u062a\u0627\u0628\u0629): ')\n        if pw and pw == getpass.getpass('\u0623\u0639\u062f \u0643\u062a\u0627\u0628\u0629 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631: '): break\n        print('\u063a\u064a\u0631 \u0645\u062a\u0637\u0627\u0628\u0642\u0629\u060c \u062d\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062e\u0631\u0649.')\n    c = conf()\n    c['dir'] = input(f\"\u0645\u062c\u0644\u062f \u062d\u0641\u0638 \u0627\u0644\u0646\u0633\u062e [{c['dir']}]: \").strip() or c['dir']\n    c['mirror_dir'] = input('\u0645\u062c\u0644\u062f \u0646\u0633\u062e\u0629 \u062b\u0627\u0646\u064a\u0629\u060c \u0645\u062b\u0644 \u0642\u0631\u0635 \u062e\u0627\u0631\u062c\u064a (\u0627\u062e\u062a\u064a\u0627\u0631\u064a\u060c Enter \u0644\u0644\u062a\u062e\u0637\u064a): ').strip() or c.get('mirror_dir', '')\n    CFG_DIR.mkdir(parents=True, exist_ok=True); os.chmod(CFG_DIR, 0o700)\n    fd = os.open(CRED, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)\n    with os.fdopen(fd, 'w', encoding='utf-8') as f: json.dump({'email': email, 'password': pw}, f)\n    CONF.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding='utf-8')\n    print('\\n\u0623\u062c\u0631\u0651\u0628 \u0627\u0644\u062f\u062e\u0648\u0644 \u0648\u0646\u0633\u062e\u0629 \u0623\u0648\u0644\u0649\u2026')\n    code = run()\n    print('\\n\u062a\u0645 \u0627\u0644\u0625\u0639\u062f\u0627\u062f \u2713 \u2014 \u0627\u0644\u062e\u0637\u0648\u0629 \u0627\u0644\u062a\u0627\u0644\u064a\u0629: python3 craftland-backup.py install' if code == 0 else '\\n\u0627\u0644\u0625\u0639\u062f\u0627\u062f \u062d\u064f\u0641\u0638\u060c \u0644\u0643\u0646 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0623\u0648\u0644\u0649 \u0641\u0634\u0644\u062a \u2014 \u0631\u0627\u062c\u0639 \u0627\u0644\u0631\u0633\u0627\u0644\u0629 \u0623\u0639\u0644\u0627\u0647.')\n    return code\n\n\nUNIT = HOME / '.config' / 'systemd' / 'user'\n\n\ndef install():\n    UNIT.mkdir(parents=True, exist_ok=True)\n    me = pathlib.Path(__file__).resolve()\n    (UNIT / 'craftland-backup.service').write_text(f\"\"\"[Unit]\nDescription=Craft Land backup\nWants=network-online.target\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart={sys.executable} {me} run\nNice=10\n\"\"\", encoding='utf-8')\n    (UNIT / 'craftland-backup.timer').write_text(\"\"\"[Unit]\nDescription=Craft Land nightly backup\n\n[Timer]\nOnCalendar=*-*-* 02:30\nRandomizedDelaySec=15m\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n\"\"\", encoding='utf-8')\n    ok = True\n    for cmd in (['systemctl', '--user', 'daemon-reload'], ['systemctl', '--user', 'enable', '--now', 'craftland-backup.timer']):\n        r = subprocess.run(cmd, capture_output=True, text=True)\n        if r.returncode: ok = False; print('\u062a\u0639\u0630\u0631:', ' '.join(cmd), r.stderr.strip())\n    r = subprocess.run(['loginctl', 'enable-linger', getpass.getuser()], capture_output=True, text=True)\n    if r.returncode: print(f'\u0644\u062a\u0639\u0645\u0644 \u0627\u0644\u0646\u0633\u062e \u062d\u062a\u0649 \u0628\u062f\u0648\u0646 \u062a\u0633\u062c\u064a\u0644 \u062f\u062e\u0648\u0644\u060c \u0646\u0641\u0651\u0630 \u0645\u0631\u0629 \u0648\u0627\u062d\u062f\u0629: sudo loginctl enable-linger {getpass.getuser()}')\n    if ok: print('\u2713 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u062a\u0644\u0642\u0627\u0626\u064a \u0645\u0641\u0639\u0651\u0644: \u0643\u0644 \u0644\u064a\u0644\u0629 \u0627\u0644\u0633\u0627\u0639\u0629 2:30 \u062a\u0642\u0631\u064a\u0628\u0627\u064b (\u0628\u062a\u0648\u0642\u064a\u062a \u0647\u0630\u0627 \u0627\u0644\u0643\u0645\u0628\u064a\u0648\u062a\u0631).\\n  \u0644\u0648 \u0643\u0627\u0646 \u0627\u0644\u062c\u0647\u0627\u0632 \u0645\u0637\u0641\u0623 \u0648\u0642\u062a\u0647\u0627\u060c \u062a\u064f\u0639\u0645\u0644 \u0627\u0644\u0646\u0633\u062e\u0629 \u0623\u0648\u0644 \u0645\u0627 \u064a\u0634\u062a\u063a\u0644.')\n    else: print(f'\u0628\u062f\u064a\u0644 \u0628\u062f\u0648\u0646 systemd \u2014 \u0623\u0636\u0641 \u0647\u0630\u0627 \u0627\u0644\u0633\u0637\u0631 \u0639\u0628\u0631 crontab -e:\\n30 2 * * * {sys.executable} {me} run')\n    return 0 if ok else 1\n\n\ndef uninstall():\n    subprocess.run(['systemctl', '--user', 'disable', '--now', 'craftland-backup.timer'], capture_output=True)\n    for n in ('craftland-backup.service', 'craftland-backup.timer'): (UNIT / n).unlink(missing_ok=True)\n    subprocess.run(['systemctl', '--user', 'daemon-reload'], capture_output=True)\n    print('\u0623\u064f\u0648\u0642\u0641 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u062a\u0644\u0642\u0627\u0626\u064a. \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0645\u062d\u0641\u0648\u0638\u0629 \u0644\u0645 \u062a\u064f\u062d\u0630\u0641.'); return 0\n\n\ndef status():\n    c = conf(); d = pathlib.Path(c['dir']); files = sorted(d.glob(PREFIX + '*.json.gz'), reverse=True)\n    print(f\"\u0627\u0644\u0634\u0631\u0643\u0629: {COMPANY}\\n\u0627\u0644\u0645\u062c\u0644\u062f: {d}\\n\u0639\u062f\u062f \u0627\u0644\u0646\u0633\u062e: {len(files)}\")\n    if (d / 'last_ok.json').exists():\n        l = json.loads((d / 'last_ok.json').read_text(encoding='utf-8')); print(f\"\u0622\u062e\u0631 \u0646\u0633\u062e\u0629 \u0646\u0627\u062c\u062d\u0629: {l['at']} \u2014 {l['file']} ({l['rows']:,} \u0633\u062c\u0644)\")\n    else: print('\u0644\u0627 \u062a\u0648\u062c\u062f \u0646\u0633\u062e\u0629 \u0646\u0627\u062c\u062d\u0629 \u0628\u0639\u062f.')\n    r = subprocess.run(['systemctl', '--user', 'list-timers', 'craftland-backup.timer', '--no-pager'], capture_output=True, text=True)\n    print(r.stdout.strip() or '\u0627\u0644\u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u062a\u0644\u0642\u0627\u0626\u064a \u063a\u064a\u0631 \u0645\u0641\u0639\u0651\u0644 (\u0634\u063a\u0651\u0644 install).')\n    return 0\n\n\ndef verify(path=None):\n    d = pathlib.Path(conf()['dir'])\n    p = pathlib.Path(path) if path else next(iter(sorted(d.glob(PREFIX + '*.json.gz'), reverse=True)), None)\n    if not p or not p.exists(): print('\u0644\u0627 \u064a\u0648\u062c\u062f \u0645\u0644\u0641 \u0644\u0644\u062a\u062d\u0642\u0642.'); return 1\n    s = pathlib.Path(str(p) + '.sha256')\n    if s.exists() and s.read_text().split()[0] != sha256(p): print(f'\u2717 {p.name}: \u0627\u0644\u0628\u0635\u0645\u0629 \u0644\u0627 \u062a\u0637\u0627\u0628\u0642 \u2014 \u0627\u0644\u0645\u0644\u0641 \u062a\u0627\u0644\u0641 \u0623\u0648 \u0645\u0639\u062f\u0651\u0644'); return 1\n    with gzip.open(p, 'rb') as f: b, rows, tables = check_backup(f.read())\n    print(f\"\u2713 {p.name} \u0633\u0644\u064a\u0645 \u2014 {b['org'].get('name_ar')} \u2014 {b.get('exported_at', '')[:16]} \u2014 {tables} \u062c\u062f\u0648\u0644\u060c {rows:,} \u0633\u062c\u0644\")\n    return 0\n\n\ndef main():\n    ap = argparse.ArgumentParser(description='\u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a \u0644\u0643\u0631\u0627\u0641\u062a \u0644\u0627\u0646\u062f')\n    ap.add_argument('cmd', choices=['setup', 'run', 'install', 'uninstall', 'status', 'verify'])\n    ap.add_argument('file', nargs='?')\n    a = ap.parse_args()\n    if '__URL__' in URL or '__ORG__' in ORG: print('\u0647\u0630\u0627 \u0627\u0644\u0645\u0644\u0641 \u0642\u0627\u0644\u0628 \u2014 \u062d\u0645\u0651\u0644\u0647 \u0645\u0646 \u0627\u0644\u062a\u0637\u0628\u064a\u0642: \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u2190 \u0627\u0644\u0646\u0633\u062e \u0627\u0644\u0627\u062d\u062a\u064a\u0627\u0637\u064a'); return 2\n    return {'setup': setup, 'run': run, 'install': install, 'uninstall': uninstall, 'status': status, 'verify': lambda: verify(a.file)}[a.cmd]()\n\n\nif __name__ == '__main__':\n    sys.exit(main())\n";
+const TBL_AR = { accounts: 'شجرة الحسابات', journal_entries: 'القيود', journal_lines: 'أسطر القيود', documents: 'المستندات', document_lines: 'أسطر المستندات', parties: 'العملاء والموردون', items: 'الأصناف',
+  payments: 'السندات', payment_allocations: 'توزيع السندات', expenses: 'المصروفات', stock_docs: 'مستندات المخزون', stock_doc_lines: 'أسطر المخزون', stock_moves: 'حركات المخزون', warehouses: 'المستودعات',
+  branches: 'الفروع', cost_centers: 'المشاريع ومراكز التكلفة', employees: 'الموظفون', payroll_runs: 'مسيرات الرواتب', payslips: 'قسائم الرواتب', tasks: 'المهام', timesheets: 'ساعات العمل',
+  project_materials: 'مواد المشاريع', mfg_orders: 'أوامر التصنيع', mfg_order_lines: 'أسطر التصنيع', mfg_order_costs: 'تكاليف التصنيع', boms: 'قوائم المواد', bom_lines: 'أسطر قوائم المواد',
+  fixed_assets: 'الأصول الثابتة', asset_depreciation: 'الإهلاك', roles: 'الأدوار', counters: 'الترقيم', feasibility_studies: 'دراسات الجدوى', saved_reports: 'التقارير المحفوظة', leaves: 'الإجازات',
+  attendance: 'الحضور', evaluations: 'التقييمات', commitments: 'الالتزامات', leads: 'العملاء المحتملون', price_lists: 'قوائم الأسعار', price_list_items: 'أسعار القوائم', budgets: 'الموازنات',
+  audit_log: 'سجل التدقيق', calendar_notes: 'ملاحظات التقويم', reminders: 'التذكيرات', landed_costs: 'تكاليف الاستيراد', pos_registers: 'نقاط البيع', pos_shifts: 'ورديات نقاط البيع',
+  van_trips: 'رحلات المندوب', zatca_devices: 'أجهزة الفوترة' };
+const backupName = () => `craftland-${riyadhToday()}_${new Date().toTimeString().slice(0, 5).replace(':', '')}`;
+const dlBlob = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
+const gz = async text => { if (!window.CompressionStream) return null; return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob(); };
+const readBackupFile = async file => {
+  let text;
+  if (/\.gz$/i.test(file.name)) { if (!window.DecompressionStream) throw new AppError('المتصفح لا يدعم فك الضغط — استخدم Chrome أو Edge حديث'); text = await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
+  else text = await file.text();
+  let b; try { b = JSON.parse(text); } catch { throw new AppError('الملف ليس نسخة احتياطية (JSON غير صالح)'); }
+  if (b?.format !== 'craftland-backup' || b.version !== 1 || !b.org || !b.tables) throw new AppError('الملف ليس نسخة احتياطية من كرافت لاند');
+  return b;
+};
+// give every row (and the company) a new id; all references follow because ids are unique strings
+const remapBackup = b => {
+  const ids = new Set([b.org.id]); for (const rows of Object.values(b.tables)) for (const r of rows) if (typeof r.id === 'string') ids.add(r.id);
+  const map = new Map([...ids].map(x => [x, crypto.randomUUID()]));
+  return JSON.parse(JSON.stringify(b).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, m => map.get(m) || m));
+};
+
+// ---------- minimal .xlsx writer (stored zip, inline strings, right-to-left sheets) ----------
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipStore(files) {
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  for (const [name, content] of files) {
+    const nb = enc.encode(name), data = typeof content === 'string' ? enc.encode(content) : content, crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30)); h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nb.length, true);
+    parts.push(new Uint8Array(h.buffer), nb, data);
+    const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nb.length, true); c.setUint32(42, off, true);
+    cen.push(new Uint8Array(c.buffer), nb); off += 30 + nb.length + data.length;
+  }
+  const size = cen.reduce((s, x) => s + x.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...cen, new Uint8Array(e.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+const xesc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+const colName = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+// sheets: [{ name, rows: [[cell,…],…] }] — first row is the header; numbers stay numbers
+function xlsxBlob(sheets) {
+  const used = new Set(), names = sheets.map(s => { let n = String(s.name).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Sheet'; let k = n, i = 2; while (used.has(k)) k = n.slice(0, 28) + ' ' + i++; used.add(k); return k; });
+  const sheetXml = rows => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>${
+    rows.map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => { const ref = colName(ci) + (ri + 1);
+      if (v == null || v === '') return '';
+      if (typeof v === 'number' && Number.isFinite(v)) return `<c r="${ref}"${ri === 0 ? ' s="1"' : ''}><v>${v}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"${ri === 0 ? ' s="1"' : ''}><is><t xml:space="preserve">${xesc(typeof v === 'object' ? JSON.stringify(v) : v).slice(0, 32000)}</t></is></c>`; }).join('')}</row>`).join('')}</sheetData></worksheet>`;
+  const files = [
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${names.map((n, i) => `<sheet name="${xesc(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf fontId="1" applyFont="1"/></cellXfs></styleSheet>`],
+    ...sheets.map((s, i) => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(s.rows)]),
+  ];
+  return zipStore(files);
+}
+
+// ---------- page ----------
+async function backupView() {
+  shell('backup', loading());
+  const [log, roles] = await Promise.all([api.backupLog().catch(() => []), can('users', 'create') ? api.listRoles().catch(() => []) : []]);
+  const owner = !!ORG?.perms?._owner || api.mode !== 'supabase', canNew = owner;
+  const ago = at => { const m = Math.round((Date.now() - new Date(at)) / 60000); return m < 1 ? 'الآن' : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : `قبل ${Math.round(m / 1440)} يوم`; };
+  const lastScript = log.find(l => l.source === 'script'), lastApp = log.find(l => l.source === 'app');
+  const stale = !lastScript || Date.now() - new Date(lastScript.at) > 36 * 3600e3;
+  const SRC = { app: 'من التطبيق', script: 'كمبيوتر النسخ', restore: 'استرجاع' };
+  const bkRole = roles.find(r => r.permissions?.backup?.length && Object.keys(r.permissions).length === 1);
+  $('#main').innerHTML = `<a class="crumb" href="#/settings">${icon('chev')} الإعدادات</a><div class="page-head"><h1>النسخ الاحتياطي والاسترجاع</h1></div>
+    <div class="grid g3" style="margin-bottom:20px">
+      <div class="card stat"><div class="label">آخر نسخة من كمبيوتر النسخ</div><div class="val ${stale ? 'down' : ''}" style="font-size:20px">${lastScript ? ago(lastScript.at) : 'لم يُعدّ بعد'}</div><div class="xs muted">${lastScript ? `${Number(lastScript.rows).toLocaleString('en-US')} سجل` : 'اتبع الخطوات بالأسفل'}${lastScript && stale ? ' — تأخرت، تأكد أن الجهاز يعمل' : ''}</div></div>
+      <div class="card stat"><div class="label">آخر نسخة يدوية</div><div class="val" style="font-size:20px">${lastApp ? ago(lastApp.at) : '—'}</div><div class="xs muted">${lastApp ? `${Number(lastApp.rows).toLocaleString('en-US')} سجل` : ''}</div></div>
+      <div class="card stat"><div class="label">ما تشمله النسخة</div><div class="val" style="font-size:20px">كل البيانات</div><div class="xs muted">الحسابات والقيود والمستندات والمخزون والموظفين والمشاريع والإعدادات والتصميم</div></div></div>
+
+    <section class="card grid" style="gap:12px;margin-bottom:16px"><h3 style="margin:0">نسخة الآن</h3>
+      <p class="muted" style="margin:0">ملف واحد فيه كل بيانات «${esc(ORG.name_ar)}»، يمكن استرجاعه لاحقاً هنا. احفظه في مكان آمن — فيه كل بيانات الشركة.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" id="bknow">${icon('down')}تنزيل نسخة احتياطية كاملة</button><button class="btn secondary" id="bkxl">${icon('down')}تصدير كل الجداول إلى Excel</button></div>
+      <p class="help" id="bkmsg" role="status"></p></section>
+
+    <section class="card grid" style="gap:12px;margin-bottom:16px"><h3 style="margin:0">استرجاع نسخة</h3>
+      <div class="field"><label for="rsf">ملف النسخة (.json.gz أو .json)</label><input type="file" id="rsf" accept=".gz,.json,application/json,application/gzip"></div>
+      <div id="rsprev"></div></section>
+
+    <section class="card grid" style="gap:12px;margin-bottom:16px"><h3 style="margin:0">كمبيوتر النسخ الاحتياطي (لينكس)</h3>
+      <p class="muted" style="margin:0">برنامج صغير يشتغل كل ليلة على الكمبيوتر المخصص: يسحب نسخة كاملة، يتحقق منها، ويحتفظ بآخر 30 نسخة يومية + نسخة لكل شهر لسنة. ما يحتاج ذكاء اصطناعي ولا اشتراك.</p>
+      <ol class="bk-steps">
+        <li><b>حساب خاص للنسخ:</b> ${bkRole ? `الدور «${esc(bkRole.name)}» موجود ✓` : can('users', 'create') ? '<button class="btn secondary sm" id="bkrole">إنشاء دور «النسخ الاحتياطي»</button>' : 'اطلب من المالك إنشاء دور للنسخ'} ثم من <a href="#/users">المستخدمون</a> ادعُ بريداً مخصصاً (مثل backup@…) بهذا الدور، وسجّل به وضع له كلمة مرور قوية. هذا الحساب يقدر ينسخ فقط — ما يقدر يعدّل أو يشوف شاشات النظام.</li>
+        <li><b>حمّل البرنامج</b> على الكمبيوتر المخصص: <button class="btn secondary sm" id="bkpy">${icon('down')}craftland-backup.py</button></li>
+        <li><b>في الطرفية (Terminal)</b> على ذلك الكمبيوتر، من المجلد اللي حمّلت فيه البرنامج:
+          <table class="bk-cmds">${[['setup', 'أول مرة: البريد وكلمة المرور ومجلد الحفظ، ثم نسخة أولى'], ['install', 'تشغيل تلقائي كل ليلة الساعة 2:30'], ['status', 'آخر النسخ وموعد القادمة'], ['verify', 'التحقق من سلامة آخر نسخة'], ['run', 'نسخة الآن يدوياً']]
+            .map(([c, t]) => `<tr><td><code dir="ltr">python3 craftland-backup.py ${c}</code></td><td>${t}</td></tr>`).join('')}</table></li>
+        <li>كل نسخة ناجحة تظهر هنا في «آخر نسخة من كمبيوتر النسخ». لو تأخرت أكثر من يوم ونصف يظهر تنبيه.</li></ol>
+      <p class="help">ننصح بتشفير قرص ذلك الكمبيوتر، وتحديد قرص خارجي كنسخة ثانية أثناء الإعداد.</p></section>
+
+    <section class="card"><h3 style="margin:0 0 8px">السجل</h3>${log.length ? `<div class="tbl-wrap"><table class="list-tbl"><thead><tr><th>الوقت</th><th>المصدر</th><th class="amt">السجلات</th><th>ملاحظة</th></tr></thead><tbody>
+      ${log.slice(0, 30).map(l => `<tr><td class="num">${esc(new Date(l.at).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' }).slice(0, 17))}</td><td>${badge([SRC[l.source] || l.source, l.source === 'script' ? 'b-ok' : l.source === 'restore' ? 'b-warn' : 'b-info'])}</td><td class="amt num">${Number(l.rows).toLocaleString('en-US')}</td><td class="xs">${esc(l.note || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد نسخ بعد.</p>'}</section>`;
+
+  const msg = t => { $('#bkmsg').textContent = t; };
+  $('#bknow').onclick = async e => { e.target.disabled = true; msg('جارٍ تجهيز النسخة…');
+    try { const b = await api.exportOrg('app'), text = JSON.stringify(b), z = await gz(text); dlBlob(z || new Blob([text], { type: 'application/json' }), backupName() + (z ? '.json.gz' : '.json'));
+      const rows = Object.values(b.counts || {}).reduce((s, n) => s + n, 0); msg(`تم ✓ — ${rows.toLocaleString('en-US')} سجل في ${Object.keys(b.tables).length} جدول.`); }
+    catch (x) { msg(''); fail(x); } finally { e.target.disabled = false; } };
+  $('#bkxl').onclick = async e => { e.target.disabled = true; msg('جارٍ تجهيز ملف Excel…');
+    try { const b = await api.exportOrg('app');
+      const sheets = [{ name: 'اقرأني', rows: [['البيان', 'القيمة'], ['الشركة', ORG.name_ar], ['تاريخ التصدير', String(b.exported_at).slice(0, 16)], ['المبالغ', 'بالهللة — اقسم على 100 للريال'], ['ملاحظة', 'للاسترجاع استخدم ملف النسخة الاحتياطية (.json.gz) وليس هذا الملف']] }];
+      for (const [t, rows] of Object.entries(b.tables).sort((a, c) => (TBL_AR[a[0]] || a[0]).localeCompare(TBL_AR[c[0]] || c[0], 'ar'))) { if (!rows.length) continue;
+        const cols = Object.keys(rows[0]); sheets.push({ name: TBL_AR[t] || t, rows: [cols, ...rows.map(r => cols.map(c => r[c]))] }); }
+      dlBlob(xlsxBlob(sheets), backupName() + '.xlsx'); msg(`تم ✓ — ${sheets.length - 1} جدول في ملف Excel.`); }
+    catch (x) { msg(''); fail(x); } finally { e.target.disabled = false; } };
+  $('#bkpy').onclick = () => { if (!BACKUP_PY) return toast('البرنامج غير مضمّن في هذه النسخة', 'bad');
+    const py = BACKUP_PY.replace("URL = '__URL__'", `URL = ${JSON.stringify(cfg.url || '')}`).replace("KEY = '__KEY__'", `KEY = ${JSON.stringify(cfg.key || '')}`)
+      .replace("ORG = '__ORG__'", `ORG = ${JSON.stringify(ORG.id)}`).replace("COMPANY = '__NAME__'", `COMPANY = ${JSON.stringify(ORG.name_ar)}`);
+    dlBlob(new Blob([py], { type: 'text/x-python;charset=utf-8' }), 'craftland-backup.py'); };
+  if ($('#bkrole')) $('#bkrole').onclick = async () => { try { await api.saveRole(null, 'النسخ الاحتياطي', { backup: ['view'] }); toast('أُنشئ الدور'); backupView(); } catch (x) { fail(x); } };
+
+  $('#rsf').onchange = async e => { const f = e.target.files[0]; if (!f) return; const box = $('#rsprev'); box.innerHTML = loading('جارٍ قراءة الملف…');
+    let b; try { b = await readBackupFile(f); } catch (x) { box.innerHTML = `<p class="help err">${esc(x.message)}</p>`; return; }
+    const counts = Object.entries(b.tables).map(([t, r]) => [t, r.length]).filter(x => x[1]).sort((a, c) => c[1] - a[1]), total = counts.reduce((s, x) => s + x[1], 0);
+    box.innerHTML = `<div class="card" style="background:var(--c-surface-2)"><b>${esc(b.org.name_ar)}</b> — نسخة <span class="num">${esc(String(b.exported_at).slice(0, 16).replace('T', ' '))}</span><br><span class="muted">${total.toLocaleString('en-US')} سجل في ${counts.length} جدول: ${counts.slice(0, 8).map(([t, n]) => `${esc(TBL_AR[t] || t)} <span class="num">${n}</span>`).join('، ')}${counts.length > 8 ? '…' : ''}</span></div>
+      <fieldset><legend>طريقة الاسترجاع</legend>
+        <label class="row" style="gap:8px;align-items:flex-start"><input type="radio" name="rsm" value="new" ${canNew ? 'checked' : 'disabled'}><span><b>كشركة جديدة</b> — آمن: بياناتك الحالية ما تتغيّر، وتظهر النسخة كشركة منفصلة تنتقل لها من قائمة الشركات وتقارن.</span></label>
+        <label class="row" style="gap:8px;align-items:flex-start;margin-top:8px"><input type="radio" name="rsm" value="replace" ${owner ? '' : 'disabled'} ${canNew ? '' : 'checked'}><span><b>بدلاً من الشركة الحالية</b> — تصير النسخة هي الشركة المستخدمة وينتقل لها كل الموظفين بنفس أدوارهم. البيانات الحالية لا تُحذف: تبقى كشركة «أرشيف» للمالك فقط.</span></label></fieldset>
+      ${field('rsname', 'اسم الشركة المسترجعة', { value: b.org.name_ar, attrs: 'maxlength="200"' })}
+      <div id="rsconf"></div><p class="help err" id="rserr" role="alert"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary" id="rsgo">استرجاع</button></div>`;
+    const conf = () => { const m = $('[name=rsm]:checked')?.value; $('#rsconf').innerHTML = m === 'replace' ? field('rsok', `للتأكيد اكتب اسم الشركة الحالية: ${ORG.name_ar}`, { attrs: 'autocomplete="off"' }) : ''; };
+    $$('[name=rsm]').forEach(x => x.onchange = conf); conf();
+    $('#rsgo').onclick = async ev => { const m = $('[name=rsm]:checked')?.value; $('#rserr').textContent = '';
+      if (!m) return $('#rserr').textContent = 'اختر طريقة الاسترجاع';
+      if (m === 'replace' && ($('#f-rsok')?.value || '').trim() !== ORG.name_ar.trim()) return $('#rserr').textContent = 'اكتب اسم الشركة الحالية كما هو للتأكيد';
+      ev.target.disabled = true; ev.target.textContent = 'جارٍ الاسترجاع…';
+      try { const nb = remapBackup(b); nb.org.name_ar = ($('#f-rsname').value || '').trim() || b.org.name_ar;
+        const id = await api.importOrg(nb, m); api.switchOrg(id); ORG = null; toast(m === 'replace' ? 'تم الاسترجاع — هذه الآن الشركة المستخدمة' : 'تم الاسترجاع كشركة جديدة');
+        location.hash = '#/dashboard'; route(); }
+      catch (x) { $('#rserr').textContent = x.message; ev.target.disabled = false; ev.target.textContent = 'استرجاع'; } };
+  };
+}
+
+const BACKUP_ROUTES = [[/^#\/backup$/, gate('backup', 'النسخ الاحتياطي', 'backup', backupView)]];
+
+// =====================================================================
+// Report builder: pick a data source, columns, filters, grouping with
+// totals / averages / counts, a pivot by month (or any field), sorting
+// and top-N; see it as a table and a bar chart; export to Excel / CSV /
+// print; save, pin, start from ready templates, or ask an AI to write the
+// definition (copy the prompt, paste the reply). Inserted after backup.js.
+// =====================================================================
+const RB_L = { date: ['التاريخ', 'date'], month: ['الشهر', 'month'], number: ['رقم المستند', 'text'], doc_kind: ['نوع المستند', 'text'], party: ['العميل', 'text'], party_city: ['المدينة', 'text'],
+  item: ['الصنف', 'text'], sku: ['رمز الصنف', 'text'], item_kind: ['نوع الصنف', 'text'], qty: ['الكمية', 'qty'], net: ['الصافي قبل الضريبة', 'money'], vat: ['الضريبة', 'money'], total: ['الإجمالي', 'money'],
+  cost: ['التكلفة', 'money'], profit: ['الربح', 'money'], branch: ['الفرع', 'text'], cost_center: ['المشروع / مركز التكلفة', 'text'], payment_status: ['حالة السداد', 'text'], paid: ['المدفوع', 'money'],
+  open: ['المتبقي', 'money'], due_date: ['تاريخ الاستحقاق', 'date'], days_late: ['أيام التأخير', 'int'], account: ['الحساب', 'text'], description: ['البيان', 'text'], employee: ['الموظف', 'text'],
+  amount: ['المبلغ', 'money'], entry_no: ['رقم القيد', 'int'], account_code: ['رمز الحساب', 'text'], account_type: ['نوع الحساب', 'text'], debit: ['مدين', 'money'], credit: ['دائن', 'money'], memo: ['البيان', 'text'],
+  warehouse: ['المستودع', 'text'], move_type: ['نوع الحركة', 'text'], qty_in: ['وارد', 'qty'], qty_out: ['صادر', 'qty'], value: ['القيمة', 'money'], unit: ['الوحدة', 'text'], sale_price: ['سعر البيع', 'money'],
+  avg_cost: ['متوسط التكلفة', 'money'], on_hand: ['الرصيد', 'qty'], stock_value: ['قيمة المخزون', 'money'], active: ['الحالة', 'text'], party_kind: ['النوع', 'text'], phone: ['الجوال', 'text'], vat_number: ['الرقم الضريبي', 'text'],
+  receivable: ['مستحق منه', 'money'], payable: ['مستحق له', 'money'], code: ['الرمز', 'text'], project: ['المشروع', 'text'], project_type: ['نوع المشروع', 'text'], status: ['الحالة', 'text'], start_date: ['البداية', 'date'],
+  contract_value: ['قيمة العقد', 'money'], revenue: ['الإيرادات', 'money'], materials: ['المواد', 'money'], expenses: ['المصروفات', 'money'], job_title: ['المهنة', 'text'], task: ['المهمة', 'text'], hours: ['الساعات', 'qty'],
+  rate: ['أجر الساعة', 'money'], posted: ['الترحيل', 'text'], gross: ['إجمالي الراتب', 'money'], additions: ['الإضافات', 'money'], deductions: ['الخصومات', 'money'], gosi_employee: ['تأمينات الموظف', 'money'],
+  gosi_employer: ['تأمينات المنشأة', 'money'], phase: ['المرحلة', 'text'], priority: ['الأولوية', 'text'], done_date: ['تاريخ الإنجاز', 'date'], late: ['التأخير', 'text'], est_hours: ['الساعات المقدرة', 'qty'], workers: ['عدد العمال', 'int'] };
+const rbF = (...keys) => keys.map(k => { const [key, over] = k.split(':'); return [key, over || RB_L[key][0], RB_L[key][1]]; });
+const RB_DS = {
+  sales_lines: { t: 'بنود المبيعات', perm: 'sales', hint: 'كل سطر في الفواتير، والإشعارات الدائنة بالسالب. فيه التكلفة والربح لكل سطر.',
+    f: rbF('date', 'month', 'number', 'doc_kind', 'party', 'party_city:مدينة العميل', 'item', 'sku', 'item_kind', 'qty', 'net', 'vat', 'total', 'cost', 'profit', 'branch', 'cost_center', 'payment_status') },
+  sales_docs: { t: 'فواتير المبيعات', perm: 'sales', hint: 'فاتورة لكل سطر مع المدفوع والمتبقي وأيام التأخير.',
+    f: rbF('date', 'month', 'number', 'doc_kind', 'party', 'party_city:مدينة العميل', 'net', 'vat', 'total', 'paid', 'open', 'due_date', 'days_late', 'payment_status', 'branch', 'cost_center') },
+  purchase_lines: { t: 'بنود المشتريات', perm: 'purchases', hint: 'كل سطر في فواتير المشتريات، والمرتجعات بالسالب.', f: rbF('date', 'month', 'number', 'doc_kind', 'party:المورد', 'item', 'sku', 'qty', 'net', 'vat', 'total', 'cost_center', 'branch') },
+  expenses: { t: 'المصروفات', perm: 'expenses', hint: 'سندات الصرف المعتمدة.', f: rbF('date', 'month', 'number', 'account', 'description', 'party:المورد', 'employee', 'cost_center', 'branch', 'amount', 'vat', 'total') },
+  journal: { t: 'القيود اليومية', perm: 'accounting', hint: 'كل سطر في القيود المرحّلة — أشمل مصدر: يغطي كل الحسابات.', f: rbF('date', 'month', 'entry_no', 'account_code', 'account', 'account_type', 'cost_center', 'party:الطرف', 'debit', 'credit', 'net:الصافي (مدين − دائن)', 'memo') },
+  stock_moves: { t: 'حركات المخزون', perm: 'inventory', hint: 'كل حركة وارد وصادر بالكمية والقيمة.', f: rbF('date', 'month', 'item', 'sku', 'warehouse', 'move_type', 'qty_in', 'qty_out', 'qty:الصافي', 'value') },
+  items: { t: 'الأصناف والأرصدة', perm: 'inventory', snap: true, hint: 'رصيد وقيمة كل صنف كما في تاريخ النهاية.', f: rbF('item', 'sku', 'item_kind', 'unit', 'sale_price', 'avg_cost', 'on_hand', 'stock_value', 'active') },
+  parties: { t: 'العملاء والموردون', perm: 'sales|purchases', snap: true, hint: 'أرصدة كل طرف كما في تاريخ النهاية.', f: rbF('party:الاسم', 'party_kind', 'party_city', 'phone', 'vat_number', 'receivable', 'payable') },
+  projects: { t: 'المشاريع', perm: 'accounting|reports|manufacturing', hint: 'إيرادات وتكاليف وربح كل مشروع خلال الفترة.', f: rbF('code', 'project', 'project_type', 'status', 'party', 'start_date', 'due_date', 'contract_value', 'revenue', 'materials', 'expenses', 'profit') },
+  timesheets: { t: 'ساعات العمل', perm: 'hr|manufacturing|accounting', hint: 'ساعات العمال على المشاريع وتكلفتها.', f: rbF('date', 'month', 'project', 'employee', 'job_title', 'task', 'hours', 'rate', 'amount:التكلفة', 'posted') },
+  payslips: { t: 'الرواتب', perm: 'hr', hint: 'قسائم المسيرات المعتمدة.', f: rbF('month', 'employee', 'job_title', 'gross', 'additions', 'deductions', 'gosi_employee', 'gosi_employer', 'net:صافي الراتب') },
+  tasks: { t: 'المهام', perm: null, hint: 'المهام المفتوحة وما يستحق خلال الفترة.', f: rbF('task', 'project', 'phase', 'status', 'priority', 'start_date', 'due_date', 'done_date', 'late', 'est_hours', 'workers') },
+};
+const RB_NUM = ['money', 'qty', 'int'], RB_AGG = { sum: 'المجموع', avg: 'المتوسط', count: 'العدد', min: 'الأقل', max: 'الأعلى' };
+const RB_OPS = { eq: 'يساوي', neq: 'لا يساوي', has: 'يحتوي', nhas: 'لا يحتوي', gt: 'أكبر من', gte: 'أكبر أو يساوي', lt: 'أقل من', lte: 'أقل أو يساوي', empty: 'فارغ', nempty: 'غير فارغ' };
+const rbOk = k => { const d = RB_DS[k]; return d && (!d.perm || d.perm.split('|').some(m => can(m))); };
+const rbDef = (ds = 'sales_lines') => ({ name: '', ds, period: 'this-month', from: '', to: '', columns: RB_DS[ds].f.slice(0, 8).map(f => f[0]), filters: [], group: [], measures: [], pivot: '', sort: null, limit: 0 });
+const RB_TPL = [
+  ['مبيعات حسب العميل', { ds: 'sales_lines', period: 'this-y', group: ['party'], measures: [{ f: 'net', agg: 'sum' }, { f: 'profit', agg: 'sum' }, { f: '*', agg: 'count' }], sort: { f: 'net', dir: 'desc' } }],
+  ['ربحية الأصناف', { ds: 'sales_lines', period: 'this-y', group: ['item'], measures: [{ f: 'qty', agg: 'sum' }, { f: 'net', agg: 'sum' }, { f: 'cost', agg: 'sum' }, { f: 'profit', agg: 'sum' }], sort: { f: 'profit', dir: 'desc' } }],
+  ['مبيعات العملاء شهراً بشهر', { ds: 'sales_lines', period: 'this-y', group: ['party'], pivot: 'month', measures: [{ f: 'net', agg: 'sum' }] }],
+  ['الفواتير المتأخرة', { ds: 'sales_docs', period: 'this-y', columns: ['number', 'date', 'party', 'total', 'open', 'due_date', 'days_late'], filters: [{ f: 'days_late', op: 'gt', v: '0' }], sort: { f: 'days_late', dir: 'desc' } }],
+  ['المشتريات حسب المورد', { ds: 'purchase_lines', period: 'this-y', group: ['party'], measures: [{ f: 'net', agg: 'sum' }, { f: 'vat', agg: 'sum' }], sort: { f: 'net', dir: 'desc' } }],
+  ['المصروفات حسب الحساب والمشروع', { ds: 'expenses', period: 'this-y', group: ['account', 'cost_center'], measures: [{ f: 'amount', agg: 'sum' }], sort: { f: 'amount', dir: 'desc' } }],
+  ['المصروفات شهرياً', { ds: 'journal', period: 'this-y', group: ['account'], pivot: 'month', measures: [{ f: 'net', agg: 'sum' }], filters: [{ f: 'account_type', op: 'eq', v: 'مصروفات' }] }],
+  ['ربحية المشاريع', { ds: 'projects', period: 'this-y', columns: ['code', 'project', 'project_type', 'status', 'party', 'revenue', 'materials', 'expenses', 'profit'], sort: { f: 'profit', dir: 'desc' } }],
+  ['ساعات العمال حسب المشروع', { ds: 'timesheets', period: 'this-month', group: ['employee', 'project'], measures: [{ f: 'hours', agg: 'sum' }, { f: 'amount', agg: 'sum' }] }],
+  ['حركة المخزون حسب الصنف', { ds: 'stock_moves', period: 'this-month', group: ['item'], measures: [{ f: 'qty_in', agg: 'sum' }, { f: 'qty_out', agg: 'sum' }, { f: 'value', agg: 'sum' }] }],
+  ['أرصدة العملاء', { ds: 'parties', columns: ['party', 'party_city', 'phone', 'receivable'], filters: [{ f: 'receivable', op: 'gt', v: '0' }], sort: { f: 'receivable', dir: 'desc' } }],
+  ['تكلفة الرواتب شهرياً', { ds: 'payslips', period: 'this-y', group: ['month'], measures: [{ f: 'gross', agg: 'sum' }, { f: 'gosi_employer', agg: 'sum' }, { f: 'net', agg: 'sum' }] }],
+  ['المهام المتأخرة', { ds: 'tasks', columns: ['task', 'project', 'phase', 'due_date', 'priority', 'workers'], filters: [{ f: 'late', op: 'eq', v: 'متأخرة' }], sort: { f: 'due_date', dir: 'asc' } }],
+];
+const rbTpl = i => { const [name, d] = RB_TPL[i]; const base = rbDef(d.ds); return { ...base, columns: d.columns || base.columns, ...d, name }; };
+const rbPeriod = d => { if (RB_DS[d.ds]?.snap) return ['2000-01-01', d.to || riyadhToday()];
+  if (d.period === 'custom' && d.from && d.to) return [d.from, d.to]; const p = periodPresets().find(x => x[0] === d.period) || periodPresets()[0]; return [p[2], p[3]]; };
+// normalise any definition (saved, template, or written by an AI) against the catalogue
+function rbClean(x) {
+  const ds = RB_DS[x?.ds] ? x.ds : 'sales_lines', F = Object.fromEntries(RB_DS[ds].f.map(f => [f[0], f])), d = rbDef(ds);
+  const has = k => !!F[k], num = k => has(k) && RB_NUM.includes(F[k][2]);
+  d.name = String(x?.name || '').slice(0, 200);
+  d.period = ['custom', ...periodPresets().map(p => p[0])].includes(x?.period) ? x.period : 'this-month';
+  d.from = /^\d{4}-\d{2}-\d{2}$/.test(x?.from || '') ? x.from : ''; d.to = /^\d{4}-\d{2}-\d{2}$/.test(x?.to || '') ? x.to : '';
+  if (Array.isArray(x?.columns)) { const c = x.columns.filter(has); if (c.length) d.columns = [...new Set(c)]; }
+  d.group = (Array.isArray(x?.group) ? x.group : []).filter(has).slice(0, 2);
+  d.measures = (Array.isArray(x?.measures) ? x.measures : []).filter(m => m && RB_AGG[m.agg] && (m.f === '*' ? m.agg === 'count' : num(m.f))).slice(0, 6).map(m => ({ f: m.f, agg: m.agg }));
+  if (d.group.length && !d.measures.length) d.measures = [{ f: '*', agg: 'count' }];
+  d.pivot = d.group.length && has(x?.pivot) && !d.group.includes(x.pivot) ? x.pivot : '';
+  d.filters = (Array.isArray(x?.filters) ? x.filters : []).filter(f => f && has(f.f) && RB_OPS[f.op]).slice(0, 10).map(f => ({ f: f.f, op: f.op, v: String(f.v ?? '').slice(0, 200) }));
+  d.sort = x?.sort && (has(x.sort.f) || d.measures.some(m => rbMKey(m) === x.sort.f || m.f === x.sort.f)) ? { f: x.sort.f, dir: x.sort.dir === 'asc' ? 'asc' : 'desc' } : null;
+  d.limit = Math.max(0, Math.min(1000, parseInt(x?.limit) || 0));
+  return d;
+}
+const rbMKey = m => m.f === '*' ? 'count' : m.agg + ':' + m.f;
+const rbMLabel = (m, F) => m.f === '*' ? 'عدد السجلات' : `${RB_AGG[m.agg]} ${F[m.f][1]}`;
+
+// ---------- the engine ----------
+function rbCompute(d, rows) {
+  const F = Object.fromEntries(RB_DS[d.ds].f.map(f => [f[0], f]));
+  const test = (val, fl) => { const t = F[fl.f][2], isNum = RB_NUM.includes(t);
+    if (fl.op === 'empty') return val == null || val === ''; if (fl.op === 'nempty') return !(val == null || val === '');
+    if (isNum) { const n = Number(toLatin(fl.v).replace(/,/g, '')) * (t === 'money' ? 100 : 1), v = Number(val) || 0; if (!Number.isFinite(n)) return true;
+      return { eq: v === n, neq: v !== n, gt: v > n, gte: v >= n, lt: v < n, lte: v <= n, has: String(val).includes(fl.v), nhas: !String(val).includes(fl.v) }[fl.op]; }
+    const a = String(val ?? ''), b = fl.v;
+    return { eq: a === b, neq: a !== b, has: a.includes(b), nhas: !a.includes(b), gt: a > b, gte: a >= b, lt: a < b, lte: a <= b }[fl.op]; };
+  let r = rows.filter(x => d.filters.every(fl => test(x[fl.f], fl)));
+  const n = r.length;
+  let cols, out;
+  if (!d.group.length) {
+    cols = d.columns.map(k => ({ k, label: F[k][1], type: F[k][2] }));
+    out = r.map(x => cols.map(c => x[c.k]));
+  } else {
+    const ms = d.measures, acc = new Map(), pv = d.pivot ? [...new Set(r.map(x => String(x[d.pivot] ?? '—')))].sort() : null;
+    const blank = () => ms.map(() => ({ s: 0, c: 0, mn: Infinity, mx: -Infinity }));
+    const add = (a, x) => ms.forEach((m, i) => { const v = m.f === '*' ? 1 : Number(x[m.f]) || 0; a[i].s += v; a[i].c++; a[i].mn = Math.min(a[i].mn, v); a[i].mx = Math.max(a[i].mx, v); });
+    const val = (a, m) => m.agg === 'count' ? a.c : m.agg === 'sum' ? a.s : m.agg === 'avg' ? (a.c ? a.s / a.c : 0) : m.agg === 'min' ? (a.c ? a.mn : 0) : (a.c ? a.mx : 0);
+    for (const x of r) { const key = JSON.stringify(d.group.map(g => x[g] ?? '—'));
+      let g = acc.get(key); if (!g) acc.set(key, g = { keys: d.group.map(g2 => x[g2] ?? '—'), all: blank(), pv: {} });
+      add(g.all, x); if (pv) add(g.pv[String(x[d.pivot] ?? '—')] ||= blank(), x); }
+    const mt = m => m.f === '*' || m.agg === 'count' ? 'int' : F[m.f][2];
+    cols = d.group.map(k => ({ k, label: F[k][1], type: F[k][2] }));
+    if (pv) { const m = ms[0]; cols.push(...pv.map(p => ({ k: 'pv:' + p, label: F[d.pivot][2] === 'month' ? monthName(p + '-01') : p, type: mt(m) })), { k: rbMKey(m), label: 'الإجمالي', type: mt(m) });
+      out = [...acc.values()].map(g => [...g.keys, ...pv.map(p => g.pv[p] ? val(g.pv[p][0], m) : 0), val(g.all[0], m)]); }
+    else { cols.push(...ms.map(m => ({ k: rbMKey(m), label: rbMLabel(m, F), type: mt(m), agg: m.agg })));
+      out = [...acc.values()].map(g => [...g.keys, ...ms.map((m, i) => val(g.all[i], m))]); }
+  }
+  if (d.sort) { const i = cols.findIndex(c => c.k === d.sort.f || c.k.endsWith(':' + d.sort.f)), dir = d.sort.dir === 'asc' ? 1 : -1;
+    if (i >= 0) out.sort((a, b) => { const x = a[i], y = b[i]; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), 'ar')) * dir; }); }
+  else if (d.group.length) { const i = d.group.length; out.sort((a, b) => ['month', 'date'].includes(cols[0].type) ? String(a[0]).localeCompare(String(b[0])) : (Number(b[i]) || 0) - (Number(a[i]) || 0)); }
+  if (d.limit) out = out.slice(0, d.limit);
+  const total = cols.map((c, i) => RB_NUM.includes(c.type) && !['avg', 'min', 'max'].includes(c.agg) && !['days_late', 'entry_no', 'workers', 'sale_price', 'avg_cost', 'rate'].includes(c.k) ? out.reduce((s, row) => s + (Number(row[i]) || 0), 0) : null);
+  return { cols, rows: out, total, n };
+}
+const rbFmt = (v, t) => v == null || v === '' ? '' : t === 'money' ? money(v) : t === 'qty' ? fq(v) : t === 'int' ? Number(v).toLocaleString('en-US') : t === 'month' ? monthName(v + '-01') : String(v);
+function rbChart(res) {
+  const ok = c => RB_NUM.includes(c.type) && !c.k.startsWith('pv:'), m1 = res.cols.findIndex(c => ok(c) && c.type === 'money'), vi = m1 > 0 ? m1 : res.cols.findIndex(ok), li = 0;
+  if (vi < 1 || res.rows.length < 2) return '';
+  const rows = res.rows.slice(0, 15), mx = Math.max(1, ...rows.map(r => Math.abs(Number(r[vi]) || 0))), c = res.cols[vi];
+  return `<figure class="rb-chart" aria-label="رسم: ${esc(c.label)} حسب ${esc(res.cols[li].label)}"><figcaption class="xs muted">${esc(c.label)} حسب ${esc(res.cols[li].label)}${res.rows.length > 15 ? ' — أعلى 15' : ''}</figcaption>
+    ${rows.map(r => { const v = Number(r[vi]) || 0; return `<div class="rb-bar" title="${esc(rbFmt(r[li], res.cols[li].type))}: ${esc(rbFmt(v, c.type))}"><span class="rb-l">${esc(rbFmt(r[li], res.cols[li].type))}</span><span class="rb-t"><i class="${v < 0 ? 'neg' : ''}" style="width:${(Math.abs(v) / mx * 100).toFixed(1)}%"></i></span><span class="rb-v num">${esc(rbFmt(v, c.type))}</span></div>`; }).join('')}</figure>`;
+}
+
+// ---------- home: saved reports + templates ----------
+async function reportBuilderHome() {
+  shell('report-builder', loading());
+  const saved = await api.listReports().catch(() => []), ed = can('reports', 'create');
+  const okSaved = saved.filter(s => rbOk(s.definition?.ds));
+  $('#main').innerHTML = `<div class="page-head"><h1>منشئ التقارير</h1>${ed ? `<a class="btn primary" href="#/report-builder/new">${icon('plus')}تقرير جديد</a>` : ''}</div>
+    <p class="muted" style="margin:-8px 0 16px">اختر مصدر البيانات والأعمدة والفلاتر والتجميع، واحفظ التقرير ليرجع لك بضغطة — بأرقام محدثة كل مرة. يمكن تصديره إلى Excel أو طباعته.</p>
+    <h3>تقاريري المحفوظة</h3>${okSaved.length ? `<div class="grid g3" style="margin-bottom:24px">${okSaved.map(s => `<a class="card rb-card" href="#/report-builder/${esc(s.id)}"><b>${s.pinned ? '★ ' : ''}${esc(s.name)}</b><span class="xs muted">${esc(RB_DS[s.definition.ds].t)}${s.definition.group?.length ? ' · مجمّع' : ''}</span></a>`).join('')}</div>`
+      : `<p class="muted" style="margin-bottom:24px">لا توجد تقارير محفوظة بعد — ابدأ من قالب أو تقرير جديد.</p>`}
+    <h3>قوالب جاهزة</h3><div class="grid g3">${RB_TPL.map(([n, d], i) => rbOk(d.ds) ? `<a class="card rb-card" href="#/report-builder/new?t=${i}"><b>${esc(n)}</b><span class="xs muted">${esc(RB_DS[d.ds].t)}</span></a>` : '').join('')}</div>`;
+}
+
+// ---------- the builder ----------
+const RB_CACHE = new Map();
+async function reportBuilderView(id, qs) {
+  shell('report-builder', loading());
+  const ed = can('reports', 'create');
+  let rec = null, d;
+  if (id && id !== 'new') { rec = await api.getReport(id); d = rbClean({ ...rec.definition, name: rec.name }); }
+  else { const t = qs?.get('t'); d = t != null && RB_TPL[+t] ? rbClean(rbTpl(+t)) : rbClean(rbDef(Object.keys(RB_DS).find(rbOk) || 'tasks')); }
+  if (!rbOk(d.ds)) { $('#main').innerHTML = empty('lock', 'ليست لديك صلاحية على مصدر هذا التقرير', 'اطلب من المالك صلاحية القسم المرتبط بالتقرير.'); return; }
+  let res = null, rows = [];
+  const F = () => Object.fromEntries(RB_DS[d.ds].f.map(f => [f[0], f]));
+  const opts = (list, cur, blank) => (blank ? `<option value="">${blank}</option>` : '') + list.map(([v, t]) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  const drawCfg = () => {
+    const f = RB_DS[d.ds].f, nums = f.filter(x => RB_NUM.includes(x[2])), snap = RB_DS[d.ds].snap;
+    $('#rbcfg').innerHTML = `
+      ${field('rbname', 'اسم التقرير', { value: d.name, attrs: `maxlength="200" placeholder="مثل: مبيعات الكرفانات حسب المدينة" ${ed ? '' : 'readonly'}` })}
+      <div class="field"><label for="rbds">مصدر البيانات</label><select class="input" id="rbds">${opts(Object.entries(RB_DS).filter(([k]) => rbOk(k)).map(([k, v]) => [k, v.t]), d.ds)}</select><span class="help">${esc(RB_DS[d.ds].hint)}</span></div>
+      ${snap ? field('rbto', 'كما في تاريخ', { type: 'date', value: d.to || riyadhToday() }) : `<div class="field"><label for="rbper">الفترة</label><select class="input" id="rbper">${opts([...periodPresets().map(p => [p[0], p[1]]), ['custom', 'فترة محددة']], d.period)}</select></div>
+        ${d.period === 'custom' ? `<div class="form-grid">${field('rbfrom', 'من', { type: 'date', value: d.from })}${field('rbto', 'إلى', { type: 'date', value: d.to })}</div>` : ''}`}
+      <fieldset><legend>التجميع</legend><div class="form-grid">${[0, 1].map(i => `<div class="field"><label for="rbg${i}">${i ? 'ثم حسب' : 'جمّع حسب'}</label><select class="input" id="rbg${i}" ${i && !d.group[0] ? 'disabled' : ''}>${opts(f.filter(x => !RB_NUM.includes(x[2]) || x[2] === 'int').map(x => [x[0], x[1]]), d.group[i] || '', i ? '—' : 'بدون (عرض السجلات)')}</select></div>`).join('')}</div>
+        ${d.group.length ? `<div class="grid" style="gap:6px">${d.measures.map((m, i) => `<div class="rb-m"><select class="input" data-ma="${i}" aria-label="العملية">${opts(Object.entries(RB_AGG), m.agg)}</select><select class="input" data-mf="${i}" aria-label="الحقل">${opts([['*', 'عدد السجلات'], ...nums.map(x => [x[0], x[1]])], m.f)}</select><button type="button" class="btn ghost icon sm" data-mdel="${i}" aria-label="حذف">${icon('x')}</button></div>`).join('')}
+          <button type="button" class="btn ghost sm" id="rbmadd" style="justify-self:start">${icon('plus')}إضافة قيمة</button></div>
+          <div class="field" style="margin-top:8px"><label for="rbpv">توزيع على أعمدة حسب</label><select class="input" id="rbpv">${opts(f.filter(x => ['text', 'month', 'date'].includes(x[2]) && !d.group.includes(x[0])).map(x => [x[0], x[1]]), d.pivot, 'بدون')}</select><span class="help">مثل: الشهر — يعرض القيمة الأولى لكل شهر في عمود.</span></div>` : ''}</fieldset>
+      ${d.group.length ? '' : `<fieldset><legend>الأعمدة</legend><div class="rb-cols">${f.map(x => `<label class="row" style="gap:6px"><input type="checkbox" data-col="${x[0]}" ${d.columns.includes(x[0]) ? 'checked' : ''}> ${esc(x[1])}</label>`).join('')}</div></fieldset>`}
+      <fieldset><legend>الفلاتر</legend><div class="grid" style="gap:6px">${d.filters.map((fl, i) => { const t = F()[fl.f][2], ops = RB_NUM.includes(t) ? ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] : ['eq', 'neq', 'has', 'nhas', 'empty', 'nempty', ...(['date', 'month'].includes(t) ? ['gte', 'lte'] : [])];
+          return `<div class="rb-flt"><select class="input" data-ff="${i}" aria-label="الحقل">${opts(f.map(x => [x[0], x[1]]), fl.f)}</select><select class="input" data-fo="${i}" aria-label="الشرط">${opts(ops.map(o => [o, RB_OPS[o]]), fl.op)}</select>
+          ${['empty', 'nempty'].includes(fl.op) ? '<span></span>' : `<input class="input" data-fv="${i}" value="${esc(fl.v)}" list="rbdl-${esc(fl.f)}" aria-label="القيمة" ${t === 'date' ? 'type="date"' : ''} placeholder="${t === 'money' ? 'بالريال' : t === 'month' ? 'YYYY-MM' : ''}">`}<button type="button" class="btn ghost icon sm" data-fdel="${i}" aria-label="حذف الفلتر">${icon('x')}</button></div>`; }).join('')}
+        <button type="button" class="btn ghost sm" id="rbfadd" style="justify-self:start">${icon('plus')}إضافة فلتر</button></div></fieldset>
+      <div class="form-grid"><div class="field"><label for="rbsort">الترتيب حسب</label><select class="input" id="rbsort">${opts([...(d.group.length ? [...d.group.map(g => [g, F()[g][1]]), ...d.measures.map(m => [rbMKey(m), rbMLabel(m, F())])] : d.columns.map(c => [c, F()[c][1]]))], d.sort?.f || '', 'تلقائي')}</select></div>
+        <div class="field"><label for="rbdir">الاتجاه</label><select class="input" id="rbdir">${opts([['desc', 'من الأعلى'], ['asc', 'من الأقل']], d.sort?.dir || 'desc')}</select></div></div>
+      ${field('rblim', 'أعلى عدد صفوف (0 = الكل)', { value: d.limit || 0, attrs: 'inputmode="numeric"' })}
+      <datalist id="rbdl-x"></datalist>${[...new Set(d.filters.map(x => x.f))].map(k => `<datalist id="rbdl-${esc(k)}">${[...new Set(rows.map(r => r[k]).filter(v => v != null && v !== ''))].slice(0, 200).map(v => `<option value="${esc(v)}">`).join('')}</datalist>`).join('')}`;
+  };
+  const drawOut = () => {
+    const [from, to] = rbPeriod(d);
+    if (!res) { $('#rbout').innerHTML = loading(); return; }
+    $('#rbout').innerHTML = `<div class="rep-head"><b style="font-size:16px">${esc(ORG.name_ar)}</b><h2 style="margin:4px 0">${esc(d.name || RB_DS[d.ds].t)}</h2>
+      <p class="muted" style="margin:0 0 8px">${RB_DS[d.ds].snap ? `كما في <span class="num">${to}</span>` : `من <span class="num">${from}</span> إلى <span class="num">${to}</span>`} · ${res.n.toLocaleString('en-US')} سجل${d.filters.length ? ` بعد ${d.filters.length} فلتر` : ''}${res.rows.length !== res.n ? ` · ${res.rows.length.toLocaleString('en-US')} صف` : ''}</p></div>
+      ${res.rows.length ? `${d.group.length ? rbChart(res) : ''}<div class="tbl-wrap"><table class="list-tbl rep-tbl" id="rbtbl"><thead><tr>${res.cols.map((c, i) => `<th class="${RB_NUM.includes(c.type) ? 'amt' : ''}"><button type="button" class="rb-sort" data-sort="${esc(c.k)}">${esc(c.label)}${d.sort && (d.sort.f === c.k) ? (d.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>`).join('')}</tr></thead>
+        <tbody>${res.rows.slice(0, 2000).map(r => `<tr>${r.map((v, i) => { const t = res.cols[i].type, n = RB_NUM.includes(t); return `<td class="${n ? 'amt num' : ''} ${n && v < 0 ? 'down' : ''}">${esc(rbFmt(v, t))}</td>`; }).join('')}</tr>`).join('')}</tbody>
+        ${res.total.some(x => x != null) ? `<tfoot><tr>${res.total.map((v, i) => `<td class="${v != null ? 'amt num' : ''}"><b>${i === 0 ? 'الإجمالي' : v != null ? esc(rbFmt(v, res.cols[i].type)) : ''}</b></td>`).join('')}</tr></tfoot>` : ''}</table></div>
+        ${res.rows.length > 2000 ? `<p class="help">يُعرض أول 2,000 صف — التصدير إلى Excel يشمل الكل.</p>` : ''}` : empty('chart', 'لا توجد بيانات', 'غيّر الفترة أو الفلاتر.')}`;
+    $$('#rbout [data-sort]').forEach(b => b.onclick = () => { const k = b.dataset.sort, fk = k.includes(':') && !k.startsWith('pv:') ? k : k; d.sort = { f: fk, dir: d.sort?.f === fk && d.sort.dir === 'desc' ? 'asc' : 'desc' }; compute(); drawCfg(); });
+  };
+  const compute = () => { res = rbCompute(d, rows); drawOut(); };
+  const load = async () => { const [from, to] = rbPeriod(d), key = `${ORG.id}|${d.ds}|${from}|${to}`; res = null; drawOut();
+    try { rows = RB_CACHE.get(key) || await api.dataset(d.ds, from, to); RB_CACHE.set(key, rows); if (RB_CACHE.size > 12) RB_CACHE.delete(RB_CACHE.keys().next().value); compute(); }
+    catch (e) { $('#rbout').innerHTML = `<p class="help err">${esc(e.message)}</p>`; } };
+
+  $('#main').innerHTML = `<a class="crumb no-print" href="#/report-builder">${icon('chev')} منشئ التقارير</a>
+    <div class="page-head no-print"><h1>${rec ? esc(rec.name) : 'تقرير جديد'}</h1><div class="row" style="gap:8px;flex-wrap:wrap">
+      ${ed ? `<button class="btn primary" id="rbsave">حفظ</button>${rec ? `<button class="btn secondary" id="rbsaveas">حفظ كنسخة</button><label class="row" style="gap:6px"><input type="checkbox" id="rbpin" ${rec.pinned ? 'checked' : ''}> مثبّت</label>` : ''}` : ''}
+      <button class="btn secondary" id="rbxl">${icon('down')}Excel</button><button class="btn secondary" id="rbcsv">CSV</button><button class="btn secondary" onclick="window.print()">${icon('down')}طباعة / PDF</button>
+      ${ed ? `<button class="btn ghost" id="rbai">اطلب من الذكاء الاصطناعي</button><button class="btn ghost" id="rbaiin">لصق تعريف</button>` : ''}${rec && ed ? `<button class="btn ghost" id="rbdel">${icon('trash')}حذف</button>` : ''}</div></div>
+    <div class="rb-grid"><form class="card grid no-print" id="rbcfg" style="gap:12px" novalidate onsubmit="return false"></form><section class="card" id="rbout"></section></div>`;
+  drawCfg(); load();
+
+  const cfg = $('#rbcfg');
+  const reset = ds => { const n = d.name; d = rbClean({ ...rbDef(ds), name: n, period: d.period, from: d.from, to: d.to }); };
+  cfg.addEventListener('change', e => { const t = e.target; let reload = false;
+    if (t.dataset.fv != null || t.id === 'f-rbname') { if (t.id === 'f-rbname') d.name = t.value.trim(); return; }
+    if (t.id === 'rbds') { reset(t.value); reload = true; }
+    else if (t.id === 'rbper') { d.period = t.value; if (t.value === 'custom') { const [a, b] = rbPeriod({ ...d, period: 'this-month' }); d.from ||= a; d.to ||= b; } reload = true; }
+    else if (t.id === 'f-rbfrom') { d.from = t.value; reload = true; } else if (t.id === 'f-rbto') { d.to = t.value; reload = true; }
+    else if (t.id === 'rbg0' || t.id === 'rbg1') { d.group = [$('#rbg0').value, t.id === 'rbg0' && !t.value ? '' : $('#rbg1').value].filter(Boolean); d = rbClean(d); }
+    else if (t.dataset.ma != null) { d.measures[+t.dataset.ma].agg = t.value; d = rbClean(d); } else if (t.dataset.mf != null) { d.measures[+t.dataset.mf].f = t.value; if (t.value === '*') d.measures[+t.dataset.mf].agg = 'count'; else if (d.measures[+t.dataset.mf].agg === 'count') d.measures[+t.dataset.mf].agg = 'sum'; d = rbClean(d); }
+    else if (t.id === 'rbpv') d.pivot = t.value;
+    else if (t.dataset.col) d.columns = RB_DS[d.ds].f.map(x => x[0]).filter(k => k === t.dataset.col ? t.checked : d.columns.includes(k));
+    else if (t.dataset.ff != null) { d.filters[+t.dataset.ff] = { f: t.value, op: RB_NUM.includes(F()[t.value][2]) ? 'gt' : 'eq', v: '' }; }
+    else if (t.dataset.fo != null) d.filters[+t.dataset.fo].op = t.value;
+    else if (t.id === 'rbsort' || t.id === 'rbdir') d.sort = $('#rbsort').value ? { f: $('#rbsort').value, dir: $('#rbdir').value } : null;
+    else if (t.id === 'f-rblim') d.limit = Math.max(0, parseInt(toLatin(t.value)) || 0);
+    else if (t.id === 'f-rbname') { d.name = t.value.trim(); }
+    if (!d.columns.length) d.columns = [RB_DS[d.ds].f[0][0]];
+    drawCfg(); reload ? load() : compute(); });
+  cfg.addEventListener('input', e => { const t = e.target;
+    if (t.dataset.fv != null) { d.filters[+t.dataset.fv].v = t.value; clearTimeout(cfg._t); cfg._t = setTimeout(compute, 250); }
+    if (t.id === 'f-rbname') { d.name = t.value.trim(); } });
+  cfg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'rbmadd') d.measures.push({ f: '*', agg: 'count' }); else if (b.dataset.mdel != null) { d.measures.splice(+b.dataset.mdel, 1); d = rbClean(d); }
+    else if (b.id === 'rbfadd') { const f0 = RB_DS[d.ds].f.find(x => x[2] === 'text') || RB_DS[d.ds].f[0]; d.filters.push({ f: f0[0], op: 'eq', v: '' }); }
+    else if (b.dataset.fdel != null) d.filters.splice(+b.dataset.fdel, 1); else return;
+    drawCfg(); compute(); });
+
+  const def = () => { const { name, ...rest } = d; return rest; };
+  const save = async asNew => { const name = (d.name || '').trim(); if (!name) { $('#f-rbname')?.focus(); return toast('اكتب اسم التقرير أولاً', 'warn'); }
+    try { const row = await api.saveReport({ id: asNew ? null : rec?.id, name, definition: def(), pinned: asNew ? false : !!$('#rbpin')?.checked }); toast('حُفظ التقرير'); if (!rec || asNew) location.hash = '#/report-builder/' + row.id; else rec = row; } catch (x) { fail(x); } };
+  if ($('#rbsave')) $('#rbsave').onclick = () => save(false);
+  if ($('#rbsaveas')) $('#rbsaveas').onclick = () => { d.name = (d.name || '') + ' (نسخة)'; save(true); };
+  if ($('#rbpin')) $('#rbpin').onchange = () => save(false);
+  if ($('#rbdel')) $('#rbdel').onclick = () => drawer('حذف التقرير', `<p>حذف «${esc(rec.name)}»؟ البيانات نفسها لا تتأثر.</p>`, async () => { await api.deleteReport(rec.id); toast('حُذف'); location.hash = '#/report-builder'; }, 'حذف');
+  const title = () => (d.name || RB_DS[d.ds].t) + ' ' + rbPeriod(d).join('_');
+  $('#rbcsv').onclick = () => { const t = $('#rbtbl'); t ? tableToCsv(t, title()) : toast('لا توجد بيانات', 'warn'); };
+  $('#rbxl').onclick = () => { if (!res?.rows.length) return toast('لا توجد بيانات', 'warn');
+    const conv = (v, t) => v == null ? '' : t === 'money' ? Math.round(Number(v)) / 100 : RB_NUM.includes(t) ? Number(v) : t === 'month' ? monthName(v + '-01') : v;
+    const sheet = [res.cols.map(c => c.label + (c.type === 'money' ? ' (ر.س)' : '')), ...res.rows.map(r => r.map((v, i) => conv(v, res.cols[i].type)))];
+    if (res.total.some(x => x != null)) sheet.push(res.total.map((v, i) => i === 0 ? 'الإجمالي' : v == null ? '' : conv(v, res.cols[i].type)));
+    dlBlob(xlsxBlob([{ name: (d.name || RB_DS[d.ds].t).slice(0, 31), rows: sheet }]), title().replace(/[\\/:*?"<>|]/g, '') + '.xlsx'); };
+
+  // AI: the prompt carries the catalogue and the format; the reply is a definition we validate
+  if ($('#rbai')) $('#rbai').onclick = () => {
+    const cat = Object.entries(RB_DS).filter(([k]) => rbOk(k)).map(([k, v]) => `- ${k} (${v.t}): ${v.f.map(f => `${f[0]}=${f[1]}[${f[2]}]`).join('، ')}`).join('\n');
+    const form = drawer('اطلب تقريراً من الذكاء الاصطناعي', `<p class="help" style="margin:0">اكتب التقرير اللي تبيه بكلامك، انسخ النص لبرنامج الذكاء الاصطناعي من حسابك، ثم الصق رده عبر «لصق تعريف». ما يُرسل أي بيانات من شركتك — فقط أسماء الحقول.</p>
+      <div class="field"><label for="rbq">وش التقرير اللي تبيه؟</label><textarea class="input" id="rbq" rows="3" style="height:auto;padding:8px 12px" placeholder="مثل: أبي ربح كل صنف هذه السنة مرتب من الأعلى، بس للمنتجات"></textarea></div>
+      <div class="field"><label for="rbqp">النص الجاهز</label><textarea class="input" id="rbqp" rows="8" readonly style="height:auto;padding:8px 12px;font-size:12px"></textarea></div>`, async () => {
+      const t = $('#rbqp', form).value; try { await navigator.clipboard.writeText(t); } catch { $('#rbqp', form).select(); document.execCommand?.('copy'); } toast('نُسخ النص — الصقه في برنامج الذكاء الاصطناعي'); }, 'نسخ النص');
+    const gen = () => { $('#rbqp', form).value = `أنت مساعد يكتب تعريفات تقارير لنظام محاسبي. الطلب: ${$('#rbq', form).value.trim() || '(اكتب الطلب)'}\n\nمصادر البيانات المتاحة وحقولها (المفتاح=الاسم[النوع]):\n${cat}\n\n` +
+      `القواعد: الأنواع money بالهللة لكن قيم الفلاتر تُكتب بالريال. العمليات: ${Object.keys(RB_AGG).join(', ')}. شروط الفلاتر: ${Object.keys(RB_OPS).join(', ')}. الفترات: ${periodPresets().map(p => p[0]).join(', ')} أو custom مع from و to بصيغة YYYY-MM-DD. group حتى حقلين، وpivot حقل نصي أو month لتوزيع القيمة الأولى على أعمدة.\n\n` +
+      'أرجع كتلة JSON واحدة فقط داخل ```json بهذا الشكل:\n```json\n{"name": "اسم التقرير", "ds": "sales_lines", "period": "this-y", "columns": ["date", "party", "net"], "group": ["party"], "measures": [{"f": "net", "agg": "sum"}], "pivot": "", "filters": [{"f": "item_kind", "op": "eq", "v": "منتج"}], "sort": {"f": "sum:net", "dir": "desc"}, "limit": 0}\n```\nإذا ما فيه تجميع اترك group و measures فارغة واستخدم columns. مفتاح الترتيب لقيمة مجمّعة يكون agg:field مثل sum:net، وللعدد count.'; };
+    $('#rbq', form).addEventListener('input', gen); gen(); };
+  if ($('#rbaiin')) $('#rbaiin').onclick = () => drawer('لصق تعريف التقرير', `<div class="field"><label for="rbpaste">رد الذكاء الاصطناعي</label><textarea class="input" id="rbpaste" rows="8" style="height:auto;padding:8px 12px;font-size:12px" placeholder="الصق الرد كاملاً…"></textarea></div>`, async () => {
+    const txt = $('#rbpaste').value || '', m = txt.match(/```(?:json)?\s*([\s\S]*?)```/i), raw = m ? m[1] : txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1);
+    let j; try { j = JSON.parse(raw.trim()); } catch { throw new Error('ما قدرت أقرأ JSON من الرد — انسخ الرد كاملاً مع كتلة ```json'); }
+    if (!j || typeof j !== 'object' || !RB_DS[j.ds]) throw new Error('الرد ما فيه مصدر بيانات معروف (ds)');
+    if (!rbOk(j.ds)) throw new Error('ليست لديك صلاحية على هذا المصدر');
+    const keepName = d.name; d = rbClean(j); if (!d.name) d.name = keepName; drawCfg(); load(); toast('طُبّق تعريف التقرير — راجعه ثم احفظ'); }, 'تطبيق');
+}
+
+const RB_ROUTES = [
+  [/^#\/report-builder$/, gate('report-builder', 'منشئ التقارير', 'reports|accounting', reportBuilderHome)],
+  [/^#\/report-builder\/([\w-]+)(\?.*)?$/, m => gate('report-builder', 'منشئ التقارير', 'reports|accounting', reportBuilderView)(m[1], new URLSearchParams((m[2] || '').slice(1)))],
+];
+window.__rb = { rbCompute, rbClean, rbTpl, RB_TPL, xlsxBlob, remapBackup };   // exposed for tests
+
 
 // ---------- router ----------
 const stub = (key, title, what) => () => { shell(key, `<div class="page-head"><h1>${esc(title)}</h1></div>${empty('box', 'قيد البناء', what)}`); };
@@ -4910,6 +5384,8 @@ const ROUTES = [
   ...THEME_ROUTES,
   ...DESIGN_ROUTES,
   ...FEAS_ROUTES,
+  ...BACKUP_ROUTES,
+  ...RB_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';
