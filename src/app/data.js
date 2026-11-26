@@ -183,6 +183,9 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/ASSET_HAS_DEPRECIATION/i, 'على الأصل إهلاك مرحّل — لا يمكن تعديل تكلفته أو حذفه، استبعده بدلاً من ذلك'], [/ASSET_DISPOSED/i, 'هذا الأصل مستبعد'],
+  [/CARD_AMOUNTS/i, 'تحقق من مبلغ التسوية والعمولة'], [/LEAVE_DECIDED/i, 'تم البت في هذا الطلب مسبقاً'],
+  [/ACCOUNT_SYSTEM/i, 'حسابات النظام لا تُحذف'], [/ACCOUNT_USED/i, 'الحساب عليه قيود أو حسابات فرعية'], [/ACCOUNT_PARENT/i, 'اختر حساباً رئيسياً (تجميعياً) كأب'],
   [/PAYROLL_POSTED/i, 'رواتب هذا الشهر مرحّلة ولا يمكن تعديلها'], [/PAYROLL_EMPTY/i, 'لا يوجد موظفون نشطون في هذا الشهر'],
   [/PAYROLL_NOT_POSTED/i, 'رحّل مسير الرواتب أولاً، أو أنه صُرف مسبقاً'], [/PAYSLIP_NEGATIVE/i, 'الخصومات أكبر من الراتب'],
   [/EMP_SALARY/i, 'مبالغ الراتب لا يمكن أن تكون سالبة'],
@@ -366,7 +369,13 @@ const SupabaseAPI = (cfg) => {
       const R = { tax_invoice: '#/invoices/', simplified_invoice: '#/invoices/', credit_note: '#/credit-notes/', purchase_bill: '#/bills/', purchase_return: '#/purchase-returns/' };
       const plus = k => ['tax_invoice', 'simplified_invoice', 'purchase_bill'].includes(k);
       const rows = [...docs.map(d => ({ date: d.issue_date, ref: d.number, what: W[d.kind], debit: plus(d.kind) ? d.total : 0, credit: plus(d.kind) ? 0 : d.total, link: R[d.kind] + d.id })),
-        ...pays.map(p => ({ date: p.pay_date, ref: p.number, what: side === 'customer' ? 'سند قبض' : 'سند صرف', debit: 0, credit: p.amount }))].sort((a, b) => a.date.localeCompare(b.date));
+        ...pays.map(p => ({ date: p.pay_date, ref: p.number, what: side === 'customer' ? 'سند قبض' : 'سند صرف', debit: 0, credit: p.amount }))];
+      // manual entries & opening balances posted to the receivable / payable account for this party
+      const acc = ok(await sb.from('accounts').select('id').eq('org_id', await orgId()).eq('system_key', side === 'customer' ? 'ar' : 'ap'))[0];
+      if (acc) ok(await sb.from('journal_lines').select('debit,credit,journal_entries(id,number,entry_date,source_type,status,memo)').eq('party_id', partyId).eq('account_id', acc.id))
+        .filter(l => l.journal_entries?.status === 'posted' && l.journal_entries.source_type === 'manual').forEach(l => { const e = l.journal_entries, d = Number(l.debit), c = Number(l.credit);
+          rows.push({ date: e.entry_date, ref: String(e.number), what: e.memo || 'قيد يدوي', debit: side === 'customer' ? d : c, credit: side === 'customer' ? c : d, link: '#/journal/' + e.id }); });
+      rows.sort((a, b) => a.date.localeCompare(b.date));
       let bal = 0; rows.forEach(r => { bal += r.debit - r.credit; r.balance = bal; }); return rows;
     },
     // ---------- companies & permissions ----------
@@ -379,7 +388,7 @@ const SupabaseAPI = (cfg) => {
     // ---------- documents: post / issue / convert / approval ----------
     async postDocument(kind, id) {
       const fn = { tax_invoice: 'post_sales_invoice', simplified_invoice: 'post_sales_invoice', credit_note: 'post_credit_note', purchase_bill: 'post_purchase_bill',
-        purchase_return: 'post_purchase_return', quote: 'issue_document', sales_order: 'issue_document', purchase_order: 'issue_document' }[kind];
+        purchase_return: 'post_purchase_return', quote: 'issue_document', sales_order: 'issue_document', purchase_order: 'issue_document', delivery_note: 'issue_document' }[kind];
       ok(await sb.rpc(fn, { doc: id })); return id; },
     async convertDocument(src, target) { return ok(await sb.rpc('convert_document', { src, target })); },
     async submitForApproval(table, id) { ok(await sb.from(table).update({ submitted_at: new Date().toISOString() }).eq('id', id).eq('status', 'draft')); },
@@ -436,6 +445,49 @@ const SupabaseAPI = (cfg) => {
         sb.from('expenses').select('id,number,expense_date,amount,vat_amount,description,status').eq('org_id', o).eq('cost_center_id', cc).order('expense_date', { ascending: false }),
         sb.from('mfg_orders').select('id,number,order_date,qty,total_cost,status,items(name_ar)').eq('org_id', o).eq('cost_center_id', cc).order('order_date', { ascending: false })]);
       return { docs: ok(docs), expenses: ok(xs), mfg: ok(ms) }; },
+    // ---- extended: accounting ----
+    async saveAccount(a) { const o = await orgId(); return a.id ? ok(await sb.from('accounts').update({ name_ar: a.name_ar, code: a.code }).eq('id', a.id).select().single())
+      : ok(await sb.from('accounts').insert({ org_id: o, parent_id: a.parent_id, code: a.code, name_ar: a.name_ar, type: a.type, is_postable: a.is_postable !== false }).select().single()); },
+    async deleteAccount(id) { const r = ok(await sb.from('accounts').delete().eq('id', id).select()); if (!r.length) throw new AppError('لا يمكن حذف هذا الحساب'); },
+    async accountStatement(acc, from, to, party) { return ok(await sb.rpc('account_statement', { p_org: await orgId(), p_account: acc, p_from: from, p_to: to, p_party: party || null }))
+      .map(r => ({ ...r, debit: Number(r.debit), credit: Number(r.credit), balance: Number(r.balance) })); },
+    async listAssets() { const o = await orgId(); const [a, d] = await Promise.all([sb.from('fixed_assets').select('*, accounts(code,name_ar)').eq('org_id', o).order('code'), sb.from('asset_depreciation').select('asset_id,amount,month').eq('org_id', o)]);
+      const dep = {}; ok(d).forEach(x => { (dep[x.asset_id] ||= { sum: 0, last: null }).sum += Number(x.amount); if (!dep[x.asset_id].last || x.month > dep[x.asset_id].last) dep[x.asset_id].last = x.month; });
+      return ok(a).map(x => ({ ...x, depreciated: dep[x.id]?.sum || 0, last_month: dep[x.id]?.last || null })); },
+    async saveAsset(a) { const row = nulls({ ...a, org_id: await orgId() }); return a.id ? ok(await sb.from('fixed_assets').update(row).eq('id', a.id).select().single()) : ok(await sb.from('fixed_assets').insert(row).select().single()); },
+    async deleteAsset(id) { ok(await sb.from('fixed_assets').delete().eq('id', id)); },
+    async runDepreciation(month) { return ok(await sb.rpc('run_depreciation', { p_org: await orgId(), p_month: month })); },
+    async disposeAsset(id, date, proceeds, account) { return ok(await sb.rpc('dispose_asset', { p_asset: id, p_date: date, p_proceeds: proceeds, p_account: account || null })); },
+    async employeeParty(emp) { return ok(await sb.rpc('employee_party', { p_emp: emp })); },
+    async custodyBalances() { return ok(await sb.rpc('custody_balances', { p_org: await orgId() })).map(r => ({ ...r, balance: Number(r.balance) })); },
+    async custodyMove(party, date, amount, cash, kind, memo) { return ok(await sb.rpc('custody_move', { p_org: await orgId(), p_party: party, p_date: date, p_amount: amount, p_cash_account: cash, p_kind: kind, p_memo: memo || null })); },
+    async settleCards(date, gross, fee, bank, ref) { return ok(await sb.rpc('settle_cards', { p_org: await orgId(), p_date: date, p_gross: gross, p_fee: fee, p_bank: bank, p_ref: ref || null })); },
+    async listBudgets(year) { return ok(await sb.from('budgets').select('*').eq('org_id', await orgId()).eq('year', year)); },
+    async saveBudget(year, account, amounts) { return ok(await sb.from('budgets').upsert({ org_id: await orgId(), year, account_id: account, amounts }, { onConflict: 'org_id,year,account_id' }).select().single()); },
+    // ---- extended: CRM & work ----
+    async listLeads() { return ok(await sb.from('leads').select('*').eq('org_id', await orgId()).order('created_at', { ascending: false })); },
+    async saveLead(l) { const row = nulls({ ...l, org_id: await orgId(), updated_at: new Date().toISOString() }); return l.id ? ok(await sb.from('leads').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leads').insert(row).select().single()); },
+    async deleteLead(id) { ok(await sb.from('leads').delete().eq('id', id)); },
+    async listTasks() { return ok(await sb.from('tasks').select('*, cost_centers(code,name)').eq('org_id', await orgId()).order('due_date', { nullsFirst: false })); },
+    async saveTask(t) { const row = nulls({ ...t, org_id: await orgId() }); return t.id ? ok(await sb.from('tasks').update(row).eq('id', t.id).select().single()) : ok(await sb.from('tasks').insert(row).select().single()); },
+    async deleteTask(id) { ok(await sb.from('tasks').delete().eq('id', id)); },
+    async listCommitments() { return ok(await sb.from('commitments').select('*, employees(full_name)').eq('org_id', await orgId()).order('expiry_date')); },
+    async saveCommitment(c) { const row = nulls({ ...c, org_id: await orgId() }); return c.id ? ok(await sb.from('commitments').update(row).eq('id', c.id).select().single()) : ok(await sb.from('commitments').insert(row).select().single()); },
+    async deleteCommitment(id) { ok(await sb.from('commitments').delete().eq('id', id)); },
+    async listNotes(from, to) { return ok(await sb.from('calendar_notes').select('*').eq('org_id', await orgId()).gte('note_date', from).lte('note_date', to).order('note_date')); },
+    async saveNote(n) { const row = { ...n, org_id: await orgId() }; return n.id ? ok(await sb.from('calendar_notes').update(row).eq('id', n.id).select().single()) : ok(await sb.from('calendar_notes').insert(row).select().single()); },
+    async deleteNote(id) { ok(await sb.from('calendar_notes').delete().eq('id', id)); },
+    // ---- extended: HR ----
+    async listLeaves() { return ok(await sb.from('leaves').select('*, employees(full_name)').eq('org_id', await orgId()).order('start_date', { ascending: false })); },
+    async saveLeave(l) { const row = nulls({ ...l, org_id: await orgId() }); return l.id ? ok(await sb.from('leaves').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leaves').insert(row).select().single()); },
+    async deleteLeave(id) { ok(await sb.from('leaves').delete().eq('id', id)); },
+    async decideLeave(id, approve) { ok(await sb.rpc('decide_leave', { p_id: id, p_approve: approve })); },
+    async leaveBalances(year) { return ok(await sb.rpc('leave_balances', { p_org: await orgId(), p_year: year })).map(r => ({ ...r, used: Number(r.used), remaining: Number(r.remaining) })); },
+    async listAttendance(day) { return ok(await sb.from('attendance').select('*').eq('org_id', await orgId()).eq('day', day)); },
+    async attendanceRange(from, to) { return ok(await sb.from('attendance').select('*').eq('org_id', await orgId()).gte('day', from).lte('day', to)); },
+    async saveAttendance(rows) { const o = await orgId(); return ok(await sb.from('attendance').upsert(rows.map(r => ({ ...r, org_id: o })), { onConflict: 'employee_id,day' }).select()); },
+    async listEvaluations() { return ok(await sb.from('evaluations').select('*, employees(full_name)').eq('org_id', await orgId()).order('eval_date', { ascending: false })); },
+    async saveEvaluation(e) { return ok(await sb.from('evaluations').insert({ ...e, org_id: await orgId() }).select().single()); },
     // ---- HR & payroll ----
     async listEmployees() { return ok(await sb.from('employees').select('*').eq('org_id', await orgId()).order('full_name')); },
     async saveEmployee(e) { const o = await orgId(); const row = { ...e, org_id: o };

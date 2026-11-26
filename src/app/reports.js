@@ -126,14 +126,17 @@ async function vatReport(from, to, head) {
 }
 
 async function agingReport(_f, _t, head) {
-  const [ar, ap] = await Promise.all([can('sales') ? api.openDocuments(['tax_invoice', 'simplified_invoice']) : [], can('purchases') ? api.openDocuments(['purchase_bill']) : []]);
+  const [ar, ap, ps] = await Promise.all([can('sales') ? api.openDocuments(['tax_invoice', 'simplified_invoice']) : [], can('purchases') ? api.openDocuments(['purchase_bill']) : [], api.listParties().catch(() => [])]);
+  const PH = Object.fromEntries(ps.map(p => [p.id, p]));
+  const remind = r => { const p = PH[r.id]; if (!p || r.t <= 0) return ''; const msg = `السلام عليكم ${p.name}، نود تذكيركم بأن الرصيد المستحق لدى ${ORG.name_ar} هو ${money(r.t)} ر.س. شاكرين تعاونكم.`;
+    return `${p.phone ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="${waLink(p.phone, msg)}" title="تذكير واتساب">واتساب</a>` : ''}${p.email ? `<a class="btn ghost sm" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('تذكير بالرصيد المستحق')}&body=${encodeURIComponent(msg)}">بريد</a>` : ''}`; };
   const today = riyadhToday(), B = ['current', '1-30', '31-60', '61-90', '90+'], BN = { current: 'غير مستحقة', '1-30': '1–30 يوم', '31-60': '31–60', '61-90': '61–90', '90+': 'أكثر من 90' };
   const bucket = d => { const days = Math.round((new Date(today) - new Date(d.due_date || d.issue_date)) / 864e5); return days <= 0 ? 'current' : days <= 30 ? '1-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+'; };
   const table = (docs, title, side) => { const by = {}; docs.forEach(d => { const k = d.party_id || '_'; (by[k] ||= { name: d.party_name, id: d.party_id, b: Object.fromEntries(B.map(x => [x, 0])), t: 0 }); by[k].b[bucket(d)] += d.open; by[k].t += d.open; });
     const rows = Object.values(by).sort((a, b) => b.t - a.t), T = Object.fromEntries(B.map(x => [x, rows.reduce((s, r) => s + r.b[x], 0)])), TT = rows.reduce((s, r) => s + r.t, 0);
-    return `<h3 style="margin:16px 0 8px">${title} <span class="muted xs">— الإجمالي <span class="num">${money(TT)}</span></span></h3>${rows.length ? `<div class="tbl-wrap"><table class="rep-tbl"><thead><tr><th>${side === 'ap' ? 'المورد' : 'العميل'}</th>${B.map(x => `<th class="amt">${BN[x]}</th>`).join('')}<th class="amt">الإجمالي</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td>${r.id ? `<a href="#/${side === 'ap' ? 'suppliers' : 'customers'}/${esc(r.id)}">${esc(r.name)}</a>` : esc(r.name)}</td>${B.map(x => `<td class="amt num ${x !== 'current' && r.b[x] ? 'down' : ''}">${r.b[x] ? money(r.b[x]) : '—'}</td>`).join('')}<td class="amt num"><b>${money(r.t)}</b></td></tr>`).join('')}
-      <tr class="grand"><td>الإجمالي</td>${B.map(x => `<td class="amt num">${money(T[x])}</td>`).join('')}<td class="amt num">${money(TT)}</td></tr></tbody></table></div>` : '<p class="muted">لا توجد أرصدة مفتوحة.</p>'}`; };
+    return `<h3 style="margin:16px 0 8px">${title} <span class="muted xs">— الإجمالي <span class="num">${money(TT)}</span></span></h3>${rows.length ? `<div class="tbl-wrap"><table class="rep-tbl"><thead><tr><th>${side === 'ap' ? 'المورد' : 'العميل'}</th>${B.map(x => `<th class="amt">${BN[x]}</th>`).join('')}<th class="amt">الإجمالي</th>${side === 'ar' ? '<th class="no-print">تذكير</th>' : ''}</tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${r.id ? `<a href="#/${side === 'ap' ? 'suppliers' : 'customers'}/${esc(r.id)}">${esc(r.name)}</a>` : esc(r.name)}</td>${B.map(x => `<td class="amt num ${x !== 'current' && r.b[x] ? 'down' : ''}">${r.b[x] ? money(r.b[x]) : '—'}</td>`).join('')}<td class="amt num"><b>${money(r.t)}</b></td>${side === 'ar' ? `<td class="no-print">${remind(r)}</td>` : ''}</tr>`).join('')}
+      <tr class="grand"><td>الإجمالي</td>${B.map(x => `<td class="amt num">${money(T[x])}</td>`).join('')}<td class="amt num">${money(TT)}</td>${side === 'ar' ? '<td></td>' : ''}</tr></tbody></table></div>` : '<p class="muted">لا توجد أرصدة مفتوحة.</p>'}`; };
   return head('أعمار الذمم', `كما في <span class="num">${today}</span> — حسب تاريخ الاستحقاق (أو تاريخ الفاتورة إن لم يُحدد)`) +
     (can('sales') ? table(ar, 'المستحق من العملاء', 'ar') : '') + (can('purchases') ? table(ap, 'المستحق للموردين', 'ap') : '');
 }

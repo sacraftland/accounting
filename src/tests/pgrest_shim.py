@@ -108,9 +108,14 @@ def tail(ops, alias):
         if op == 'limit': lim = f' limit {int(args[0])}'
     return (' order by ' + ', '.join(o) if o else '') + lim
 
+def cast(src, c, ty):
+    if ty.startswith('json'): return f"({src}->{lit(c)})::{ty}"
+    if ty.endswith('[]'): return f"(select array_agg(x::{ty[:-2]}) from json_array_elements_text({src}->{lit(c)}) x)"
+    return f"({src}->>{lit(c)})::{ty}"
+
 def typed(t, cols, src='j'):
     ty = coltypes(t)
-    return ', '.join(f"({src}->>{lit(c)})::{ty[c]}" if not ty[c].startswith('json') else f"({src}->{lit(c)})::{ty[c]}" for c in cols)
+    return ', '.join(cast(src, c, ty[c]) for c in cols)
 
 def run(req):
     sub = req.get('sub')
@@ -140,7 +145,12 @@ def run(req):
                 cols = [c for c in cols if c in coltypes(t)]
                 j = lit(r)
                 ins = f"insert into {t} ({', '.join(cols)}) select {typed(t, cols)} from (select {j}::json j) s"
-                if kind == 'upsert' and 'id' in cols:
+                conf = (args[1] or {}).get('onConflict') if len(args) > 1 and isinstance(args[1], dict) else None
+                if kind == 'upsert' and conf:
+                    keys = [ident(k.strip()) for k in conf.split(',')]
+                    upd = ', '.join(f"{c} = excluded.{c}" for c in cols if c not in keys and c != 'id')
+                    ins += f" on conflict ({', '.join(keys)}) do update set {upd}" if upd else f" on conflict ({', '.join(keys)}) do nothing"
+                elif kind == 'upsert' and 'id' in cols:
                     upd = ', '.join(f"{c} = excluded.{c}" for c in cols if c != 'id')
                     ins += f" on conflict (id) do update set {upd}"
                 stmts.append(f"({ins} {ret})")
@@ -148,8 +158,7 @@ def run(req):
                    " select coalesce(json_agg(r), '[]') from (" + ' union all '.join(f"select * from m{i}" for i in range(len(stmts))) + ") r")
         elif kind == 'update':
             row = args[0]; cols = [ident(c) for c in row.keys() if c in coltypes(t)]
-            sets = ', '.join(f"{c} = ({lit(row)}::json->>{lit(c)})::{coltypes(t)[c]}" if not coltypes(t)[c].startswith('json')
-                             else f"{c} = ({lit(row)}::json->{lit(c)})::{coltypes(t)[c]}" for c in cols)
+            sets = ', '.join(f"{c} = {cast(lit(row) + '::json', c, coltypes(t)[c])}" for c in cols)
             sql = f"with m as (update {t} t0 set {sets}{where(ops, 't0')} {ret}) select coalesce(json_agg(m), '[]') from m"
         else:
             sql = f"with m as (delete from {t} t0{where(ops, 't0')} {ret}) select coalesce(json_agg(m), '[]') from m"

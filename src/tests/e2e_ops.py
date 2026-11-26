@@ -43,11 +43,18 @@ with sync_playwright() as p:
         pg.on('pageerror', lambda e: errs.append(str(e)))
         pg.on('console', lambda m: m.type == 'error' and errs.append(m.text))
         return ctx, pg, errs
-    def go(pg, h, wait=700): pg.goto(URL + h); pg.wait_for_timeout(wait)
+    def settle(pg):
+        try: pg.wait_for_function("!document.querySelector('.loading-screen') && !!document.querySelector('#main, #app form')", timeout=8000)
+        except Exception: pass
+    def go(pg, h, wait=700): pg.goto(URL + h); pg.wait_for_timeout(wait); settle(pg)
     def toast_bad(pg): return [t for t in pg.locator('.toast.bad').all_inner_texts()]
     def signup(pg, email):
         go(pg, '#/signup'); pg.fill('#f-email', email); pg.fill('#f-pw', 'goodpass1'); pg.click('#authf [type=submit]'); pg.wait_for_timeout(1200)
-    def drawer_submit(pg): pg.click('.drawer [type=submit]'); pg.wait_for_timeout(900)
+    def drawer_submit(pg):
+        pg.click('.drawer [type=submit]'); pg.wait_for_timeout(900)
+        try: pg.wait_for_function("!document.querySelector('.drawer') || document.querySelector('.drawer [data-err]')?.textContent", timeout=6000)
+        except Exception: pass
+        settle(pg)
 
     # ================= owner =================
     ctx, pg, errs = ctx_new()
@@ -207,6 +214,8 @@ with sync_playwright() as p:
     # ================= owner approves =================
     ctx, pg, errs = ctx_new()
     go(pg, '#/login'); pg.fill('#f-email', 'sa.craft.land@gmail.com'); pg.fill('#f-pw', 'goodpass1'); pg.click('#authf [type=submit]'); pg.wait_for_timeout(2000)
+    try: pg.wait_for_function("document.querySelector('#main')?.innerText.includes('بانتظار اعتمادك')", timeout=8000)
+    except Exception: pass
     check('owner dashboard lists pending approval', 'بانتظار اعتمادك' in pg.inner_text('#main') and 'أمر تصنيع' in pg.inner_text('#main'))
     pg.screenshot(path=str(SHOTS / 'S56-dashboard-approvals.png'), full_page=True)
     go(pg, f'#/mfg/{mo}', 1200); pg.click('#mf [type=submit]'); pg.wait_for_timeout(2000)
@@ -262,7 +271,7 @@ with sync_playwright() as p:
     check('expense tagged with project', one("select count(*) from journal_lines where cost_center_id is not null") != '0', toast_bad(pg))
     cc = one("select id from cost_centers")
     go(pg, f'#/projects/{cc}', 1500); t = pg.inner_text('#main')
-    check('project page shows its cost', '500.00' in t and 'نقل الكرفان' in t, t[:300])
+    check('project page shows its cost', '500.00' in t and 'نقل الكرفان' in t, t[:1500])
     pg.screenshot(path=str(SHOTS / 'S65-project.png'), full_page=True)
 
     # ---------- POS ----------

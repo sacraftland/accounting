@@ -26,7 +26,9 @@ const onBusy = async (btns, fn) => { btns.forEach(b => b.disabled = true); try {
 // ---------- document types (everything except sales invoices, which keep their own screens) ----------
 const DOCS = {
   quotes: { kinds: [['quote', 'عرض سعر']], module: 'sales', side: 'customer', title: 'عروض الأسعار', one: 'عرض سعر', paper: 'عرض سعر<br>Quotation', prefix: 'QUO',
-    price: 'sale_price', postLabel: 'إصدار العرض', issue: true, dueLabel: 'صالح حتى', convert: [['tax_invoice', 'تحويل لفاتورة ضريبية'], ['simplified_invoice', 'تحويل لفاتورة مبسطة']] },
+    price: 'sale_price', postLabel: 'إصدار العرض', issue: true, dueLabel: 'صالح حتى', convert: [['tax_invoice', 'تحويل لفاتورة ضريبية'], ['simplified_invoice', 'تحويل لفاتورة مبسطة'], ['delivery_note', 'تحويل لسند تسليم']] },
+  'delivery-notes': { kinds: [['delivery_note', 'سند تسليم']], module: 'sales', side: 'customer', title: 'سندات التسليم', one: 'سند تسليم', paper: 'سند تسليم<br>Delivery Note',
+    price: 'sale_price', postLabel: 'إصدار السند', issue: true, dueLabel: 'تاريخ التسليم', convert: [['tax_invoice', 'تحويل لفاتورة ضريبية'], ['simplified_invoice', 'تحويل لفاتورة مبسطة']] },
   'credit-notes': { kinds: [['credit_note', 'إشعار دائن']], module: 'sales', side: 'customer', title: 'الإشعارات الدائنة', one: 'إشعار دائن', paper: 'إشعار دائن<br>Credit Note',
     price: 'sale_price', postLabel: 'ترحيل الإشعار', needsSource: 'من صفحة الفاتورة: «إصدار إشعار دائن»', stock: true, qr: true },
   bills: { kinds: [['purchase_bill', 'فاتورة مشتريات']], module: 'purchases', side: 'supplier', title: 'فواتير المشتريات', one: 'فاتورة مشتريات', paper: 'فاتورة مشتريات<br>Purchase Invoice',
@@ -36,8 +38,8 @@ const DOCS = {
   'purchase-returns': { kinds: [['purchase_return', 'إشعار مدين (مرتجع)']], module: 'purchases', side: 'supplier', title: 'مرتجعات المشتريات', one: 'إشعار مدين', paper: 'إشعار مدين — مرتجع مشتريات<br>Debit Note',
     price: 'avg_cost', postLabel: 'ترحيل المرتجع', needsSource: 'من صفحة فاتورة المشتريات: «إرجاع للمورد»', accounts: true, stock: true },
 };
-const KIND_ROUTE = { tax_invoice: 'invoices', simplified_invoice: 'invoices', quote: 'quotes', credit_note: 'credit-notes', purchase_bill: 'bills', purchase_order: 'purchase-orders', purchase_return: 'purchase-returns' };
-const KIND_NAME = { tax_invoice: 'فاتورة ضريبية', simplified_invoice: 'فاتورة مبسطة', quote: 'عرض سعر', credit_note: 'إشعار دائن', purchase_bill: 'فاتورة مشتريات', purchase_order: 'أمر شراء', purchase_return: 'مرتجع مشتريات' };
+const KIND_ROUTE = { tax_invoice: 'invoices', simplified_invoice: 'invoices', quote: 'quotes', delivery_note: 'delivery-notes', credit_note: 'credit-notes', purchase_bill: 'bills', purchase_order: 'purchase-orders', purchase_return: 'purchase-returns' };
+const KIND_NAME = { tax_invoice: 'فاتورة ضريبية', simplified_invoice: 'فاتورة مبسطة', quote: 'عرض سعر', delivery_note: 'سند تسليم', credit_note: 'إشعار دائن', purchase_bill: 'فاتورة مشتريات', purchase_order: 'أمر شراء', purchase_return: 'مرتجع مشتريات' };
 const docLink = d => `#/${KIND_ROUTE[d.kind]}/${d.id}`;
 
 async function docListView(key) {

@@ -71,7 +71,7 @@ function drawer(title, body, onSubmit, submitLabel = 'حفظ') {
   const form = $('form', bg);
   form.addEventListener('submit', async e => { e.preventDefault(); const btn = $('[type=submit]', form); btn.disabled = true; $('[data-err]', form).textContent = '';
     try { await onSubmit(Object.fromEntries(new FormData(form)), form); close(); } catch (err) { $('[data-err]', form).textContent = err.message || 'حدث خطأ'; } finally { btn.disabled = false; } });
-  setTimeout(() => $('input,select', form)?.focus(), 30);
+  setTimeout(() => { if (!form.contains(document.activeElement)) $('input,select', form)?.focus(); }, 30);
   return form;
 }
 const field = (name, label, { type = 'text', value = '', req = false, help = '', attrs = '', cls = '' } = {}) =>
@@ -84,16 +84,19 @@ const select = (name, label, opts, value = '', extra = '') => `<div class="field
 // ---------- shell ----------
 const NAV = [   // [route, icon, label, module, local-mode too?]
   ['dashboard', 'home', 'الرئيسية', null, 1],
-  ['g', '', 'المبيعات', 'sales'], ['pos', 'pos', 'نقطة البيع', 'sales'], ['invoices', 'file', 'الفواتير', 'sales', 1], ['quotes', 'file', 'عروض الأسعار', 'sales'], ['credit-notes', 'file', 'الإشعارات الدائنة', 'sales'],
+  ['g', '', 'المبيعات', 'sales'], ['pos', 'pos', 'نقطة البيع', 'sales'], ['invoices', 'file', 'الفواتير', 'sales', 1], ['quotes', 'file', 'عروض الأسعار', 'sales'], ['credit-notes', 'file', 'الإشعارات الدائنة', 'sales'], ['delivery-notes', 'file', 'سندات التسليم', 'sales'],
+  ['card-settle', 'receipt', 'تسوية الشبكة (مدى)', 'sales|accounting'], ['leads', 'users', 'العملاء المحتملون', 'sales'],
   ['receipts', 'receipt', 'سندات القبض', 'sales', 1], ['customers', 'users', 'العملاء', 'sales', 1],
   ['g', '', 'المشتريات', 'purchases'], ['bills', 'cart', 'فواتير المشتريات', 'purchases'], ['purchase-orders', 'cart', 'أوامر الشراء', 'purchases'], ['purchase-returns', 'cart', 'مرتجعات المشتريات', 'purchases'],
   ['payments', 'receipt', 'سندات الصرف', 'purchases'], ['suppliers', 'users', 'الموردون', 'purchases'],
-  ['g', '', 'المصروفات', 'expenses'], ['expenses', 'receipt', 'المصروفات', 'expenses'],
+  ['g', '', 'المصروفات', 'expenses'], ['expenses', 'receipt', 'المصروفات', 'expenses'], ['custody', 'receipt', 'الصندوق والعهد', 'expenses'],
   ['g', '', 'المخزون والتصنيع', 'inventory|manufacturing'], ['items', 'box', 'الأصناف والخدمات', 'sales|purchases|inventory|manufacturing', 1], ['warehouses', 'box', 'المستودعات والأرصدة', 'inventory'], ['stock', 'box', 'حركات المخزون', 'inventory'],
   ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
   ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
+  ['assets', 'box', 'الأصول الثابتة', 'accounting'],
   ['projects', 'chart', 'المشاريع ومراكز التكلفة', 'accounting|manufacturing|reports'], ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
-  ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'],
+  ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
+  ['g', '', 'المتابعة', null], ['tasks', 'file', 'المهام', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
   ['g', '', '', null], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
@@ -246,7 +249,7 @@ async function dashboardView() {
   const mCn = cns.filter(d => d.status === 'posted' && d.issue_date.startsWith(month));
   const sales = mDocs.reduce((a, d) => a + d.subtotal, 0) - mCn.reduce((a, d) => a + d.subtotal, 0), vat = mDocs.reduce((a, d) => a + d.vat_total, 0) - mCn.reduce((a, d) => a + d.vat_total, 0);
   const open = posted.reduce((a, d) => a + (d.total - d.amount_paid), 0), overdue = posted.filter(d => d.due_date && d.due_date < riyadhToday() && d.payment_status !== 'paid');
-  const [pend, ins] = await Promise.all([approvalsCard().catch(() => ''), dashInsights().catch(() => '')]);
+  const [pend, ins, cal, top] = await Promise.all([approvalsCard().catch(() => ''), dashInsights().catch(() => ''), dashCalendar().catch(() => ''), topBalances().catch(() => '')]);
   const cash = tb.filter(r => ['1101', '1102', '1103'].includes(r.code)).reduce((a, r) => a + Number(r.balance), 0);
   $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
     ${pend}<div class="grid g4" style="margin-bottom:24px">
@@ -254,9 +257,10 @@ async function dashboardView() {
       <div class="card stat"><div class="label">ضريبة المخرجات هذا الشهر</div><div class="val num">${money(vat)}</div><div class="xs muted">تُورَّد في الإقرار الضريبي</div></div>
       <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">${money(open)}</div><div class="xs ${overdue.length ? 'down' : 'muted'}">${overdue.length ? overdue.length + ' فاتورة متأخرة' : 'لا يوجد متأخر'}</div></div>
       <div class="card stat"><div class="label">النقدية والبنك</div><div class="val num">${money(cash)}</div><div class="xs muted">الصندوق + البنك + الشبكة</div></div>
-    </div>${ins}
+    </div>${cal}${ins}${top}
     <h2 style="margin-bottom:12px">آخر الفواتير</h2>
     ${docs.length ? invoiceTable(docs.slice(0, 6)) : empty('receipt', 'لا توجد فواتير بعد', 'ابدأ بإضافة عميل وصنف، ثم أصدر أول فاتورة — يُسجَّل قيدها في الحسابات تلقائياً.', `<div class="row" style="justify-content:center"><a class="btn secondary" href="#/customers">إضافة عميل</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>`)}`;
+  wireCalendar();
 }
 
 // ---------- invoices ----------
@@ -297,7 +301,7 @@ async function invoiceEditView(id) {
       <div class="grid g3" style="margin-bottom:16px">
         ${select('kind', 'نوع الفاتورة', [['tax_invoice', 'فاتورة ضريبية (لمنشأة)'], ['simplified_invoice', 'فاتورة مبسطة (لفرد / نقدي)']], doc.kind)}
         <div class="field"><label for="f-party">العميل</label><select class="input" id="f-party" name="party_id"><option value="">— عميل نقدي —</option>${parties.map(p => `<option value="${esc(p.id)}"${p.id === doc.party_id ? ' selected' : ''}>${esc(p.name)}${p.vat_number ? '' : ' (بدون رقم ضريبي)'}</option>`).join('')}</select>
-          <a href="#" class="xs" id="qparty">+ عميل جديد</a></div>
+          <a href="#" class="xs" id="qparty">+ عميل جديد</a><span class="help err" id="climit" role="status"></span></div>
         ${field('issue_date', 'تاريخ الفاتورة', { type: 'date', value: doc.issue_date, req: true })}
         ${field('due_date', 'تاريخ الاستحقاق', { type: 'date', value: doc.due_date || '' })}
         ${whs.length > 1 ? select('warehouse_id', 'المستودع', whs.map(w => [w.id, w.name]), doc.warehouse_id || whs[0].id) : ''}
@@ -344,6 +348,11 @@ async function invoiceEditView(id) {
   const addLine = () => { lines.push({ item_id: '', description: '', qty: 1, unit_price: 0, discount: 0, tax_category: 'S', vat_rate: 15 }); drawLines(); $(`tr[data-i="${lines.length - 1}"] select`).focus(); };
   $('#addl').onclick = addLine;
   ['#f-kind', '#f-party'].forEach(s => $(s).addEventListener('change', kindCheck));
+  const climit = async () => { const el = $('#climit'), p = parties.find(x => x.id === $('#f-party').value); if (!el) return; el.textContent = '';
+    if (!p || p.credit_limit == null || api.mode !== 'supabase') return; const open = (await api.openDocuments(['tax_invoice', 'simplified_invoice']).catch(() => [])).filter(d => d.party_id === p.id && d.id !== id).reduce((s, d) => s + d.open, 0);
+    const tot = lines.reduce((s, l) => s + Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * (1 + (Number(l.vat_rate ?? 15)) / 100)), 0);
+    if (open + tot > p.credit_limit) el.textContent = `تنبيه: الرصيد المستحق ${money(open)} + هذه الفاتورة يتجاوز حد الائتمان ${money(p.credit_limit)}`; };
+  $('#f-party').addEventListener('change', climit); climit();
   $('#qparty').onclick = e => { e.preventDefault(); partyDrawer(null, async p => { toast('تمت إضافة العميل'); const keep = collect(); await invoiceEditViewKeep(keep, p.id); }); };
   const collect = () => { const f = Object.fromEntries(new FormData($('#invf'))); return { doc: { ...(existing ? { id: existing.id } : {}), kind: f.kind, party_id: f.party_id || null, issue_date: f.issue_date, issue_time: riyadhTime(), due_date: f.due_date || null, note: f.note, branch_id: existing?.branch_id || null,
     ...(srv ? { warehouse_id: f.warehouse_id || existing?.warehouse_id || null, cost_center_id: f.cost_center_id || null } : {}) }, lines }; };
@@ -421,11 +430,13 @@ function partyDrawer(p, after, side = 'customer') {
     ${select('kind', 'النوع', sup ? [['supplier', 'مورد'], ['both', 'مورد وعميل']] : [['customer', 'عميل'], ['both', 'عميل ومورد']], p.kind || side)}
     <div class="form-grid">${field('vat_number', 'الرقم الضريبي', { value: p.vat_number, help: sup ? 'مطلوب لخصم ضريبة المدخلات' : 'مطلوب للفاتورة الضريبية', attrs: 'inputmode="numeric" dir="ltr" maxlength="15"' })}${field('cr_number', 'السجل التجاري', { value: p.cr_number, attrs: 'inputmode="numeric" dir="ltr"' })}</div>
     <fieldset class="form-grid"><legend class="full">العنوان الوطني</legend>${field('city', 'المدينة', { value: p.city })}${field('district', 'الحي', { value: p.district })}${field('street', 'الشارع', { value: p.street })}${field('building_no', 'رقم المبنى', { value: p.building_no, attrs: 'inputmode="numeric" dir="ltr" maxlength="4"' })}${field('postal_code', 'الرمز البريدي', { value: p.postal_code, attrs: 'inputmode="numeric" dir="ltr" maxlength="5"' })}</fieldset>
-    <div class="form-grid">${field('phone', 'الجوال', { type: 'tel', value: p.phone, attrs: 'dir="ltr"' })}${field('email', 'البريد', { type: 'email', value: p.email, attrs: 'dir="ltr"' })}</div>`,
+    <div class="form-grid">${field('phone', 'الجوال', { type: 'tel', value: p.phone, attrs: 'dir="ltr"' })}${field('email', 'البريد', { type: 'email', value: p.email, attrs: 'dir="ltr"' })}</div>
+    ${sup ? '' : field('credit_limit', 'حد الائتمان (اتركه فارغاً بلا حد)', { type: 'money', value: p.credit_limit ? money(p.credit_limit) : '', help: 'ينبّهك النظام عند إصدار فاتورة تتجاوز الحد' })}`,
     async f => { ['vat_number', 'cr_number', 'building_no', 'postal_code', 'phone'].forEach(k => f[k] = toLatin(f[k]));
       if (f.vat_number && !VAT_RE.test(f.vat_number)) throw new AppError('الرقم الضريبي 15 رقماً ويبدأ وينتهي بـ 3');
       if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) throw new AppError('البريد الإلكتروني غير صحيح');
-      Object.keys(f).forEach(k => { if (f[k] === '') f[k] = null; }); const r = await api.saveParty({ ...(p.id ? { id: p.id } : {}), ...f }); await after?.(r); });
+      Object.keys(f).forEach(k => { if (f[k] === '') f[k] = null; });
+      if (f.credit_limit != null) { f.credit_limit = toHalalas(f.credit_limit); if (!(f.credit_limit >= 0)) throw new AppError('حد الائتمان غير صحيح'); } const r = await api.saveParty({ ...(p.id ? { id: p.id } : {}), ...f }); await after?.(r); });
 }
 async function customersView() {
   shell('customers', loading()); const [ps, docs] = await Promise.all([api.listParties('customer'), api.listDocuments(['tax_invoice', 'simplified_invoice'])]);
@@ -441,8 +452,8 @@ async function customersView() {
 async function customerView(id) {
   shell('customers', loading()); const ps = await api.listParties(); const p = ps.find(x => x.id === id); if (!p) throw new AppError('العميل غير موجود');
   const rows = await api.partyStatement(id), bal = rows.at(-1)?.balance || 0;
-  $('#main').innerHTML = `<a class="crumb" href="#/customers">${icon('chev')} العملاء</a><div class="page-head"><h1>${esc(p.name)}</h1><button class="btn secondary" id="ed">تعديل</button><a class="btn primary" href="#/receipts/new?party=${esc(p.id)}">${icon('receipt')}سند قبض</a></div>
-    <div class="grid g3" style="margin-bottom:20px"><div class="card stat"><div class="label">الرصيد المستحق</div><div class="val num">${money(bal)}</div></div>
+  $('#main').innerHTML = `<a class="crumb" href="#/customers">${icon('chev')} العملاء</a><div class="page-head"><h1>${esc(p.name)}</h1><button class="btn secondary" id="ed">تعديل</button>${p.phone && bal > 0 ? `<a class="btn secondary" target="_blank" rel="noopener" href="${waLink(p.phone, `السلام عليكم ${p.name}، نود تذكيركم بأن الرصيد المستحق لدى ${ORG.name_ar} هو ${money(bal)} ر.س. شاكرين تعاونكم.`)}">واتساب تذكير</a>` : ''}${p.email && bal > 0 ? `<a class="btn secondary" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('تذكير بالرصيد المستحق — ' + ORG.name_ar)}&body=${encodeURIComponent(`السلام عليكم ${p.name}،\nنود تذكيركم بأن الرصيد المستحق هو ${money(bal)} ر.س.\nشاكرين تعاونكم.`)}">بريد تذكير</a>` : ''}<a class="btn primary" href="#/receipts/new?party=${esc(p.id)}">${icon('receipt')}سند قبض</a></div>
+    <div class="grid g3" style="margin-bottom:20px"><div class="card stat"><div class="label">الرصيد المستحق</div><div class="val num">${money(bal)}</div>${p.credit_limit != null ? `<div class="xs ${bal > p.credit_limit ? 'down' : 'muted'}">حد الائتمان ${money(p.credit_limit)}${bal > p.credit_limit ? ' — متجاوز!' : ` · متاح ${money(p.credit_limit - bal)}`}</div>` : ''}</div>
     <div class="card" style="grid-column:span 2"><dl class="kv"><dt>الرقم الضريبي</dt><dd class="num">${esc(p.vat_number || '—')}</dd><dt>العنوان</dt><dd>${esc([p.building_no, p.street, p.district, p.city, p.postal_code].filter(Boolean).join('، ') || '—')}</dd><dt>التواصل</dt><dd class="num">${esc([p.phone, p.email].filter(Boolean).join(' · ') || '—')}</dd></dl></div></div>
     <h2 style="margin-bottom:12px">كشف الحساب</h2>
     ${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>المستند</th><th>البيان</th><th class="amt">مدين</th><th class="amt">دائن</th><th class="amt">الرصيد</th></tr></thead><tbody>
@@ -542,11 +553,12 @@ async function accountsView() {
   accs.forEach(a => (kids[a.parent_id || 'root'] ||= []).push(a));
   const roll = a => (bal[a.id] || 0) + (kids[a.id] || []).reduce((s, k) => s + roll(k), 0);
   const sign = a => ['asset', 'expense'].includes(a.type) ? 1 : -1;
-  const rows = []; const walk = (a, d) => { rows.push({ a, d }); (kids[a.id] || []).forEach(k => walk(k, d + 1)); }; (kids.root || []).forEach(a => walk(a, 0));
+  const rows = []; const walk = (a, d) => { rows.push({ a, d }); (kids[a.id] || []).forEach(k => walk(k, d + 1)); }; (kids.root || []).forEach(a => walk(a, 0)); accs.sorted = rows.map(r => r.a);
   $('#main').innerHTML = `<div class="page-head"><h1>شجرة الحسابات</h1><span class="muted">${accs.length} حساباً</span></div>
     <p class="muted" style="margin:-8px 0 16px">الحسابات التي عليها قفل يستخدمها النظام في القيود التلقائية ولا تُحذف.</p>
     <div class="tbl-wrap"><table class="tree-tbl"><thead><tr><th>الحساب</th><th>الرمز</th><th class="amt">الرصيد</th></tr></thead><tbody>
     ${rows.map(({ a, d }) => `<tr class="${a.is_postable ? '' : 'grp'}" style="--d:${d}"><td>${esc(a.name_ar)} ${a.system_key ? `<span class="muted" title="حساب نظام">${icon('lock')}</span>` : ''}</td><td class="num muted">${esc(a.code)}</td><td class="amt num">${roll(a) ? money(roll(a) * sign(a)) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
+  enhanceAccounts(accs);
 }
 async function trialBalanceView() {
   shell('trial-balance', loading()); const tb = await api.trialBalance();
@@ -630,6 +642,7 @@ const ROUTES = [
   [/^#\/purchases$/, () => { location.hash = '#/bills'; }], [/^#\/inventory$/, () => { location.hash = '#/warehouses'; }],
   ...POS_ROUTES,
   ...REPORT_ROUTES,
+  ...EXT_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';
