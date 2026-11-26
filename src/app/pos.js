@@ -71,8 +71,10 @@ async function posView() {
   drawGrid(); drawCart(); $('#posq').focus();
 }
 function posReceipt(d, method, paid, opt = {}) {
-  let qr = ''; try { const ts = `${d.issue_date}T${(d.issue_time || '00:00:00').slice(0, 8)}+03:00`;
-    qr = QR.svg(QR.encode(QR.ascii(QR.zatcaTLV({ seller: ORG.name_ar, vatNo: ORG.vat_number || '', timestamp: new Date(ts).toISOString().replace('.000', ''), total: (d.total / 100).toFixed(2), vat: (d.vat_total / 100).toFixed(2) }))), 3); } catch { qr = ''; }
+  let qr = '', qm = null; try { const ts = `${d.issue_date}T${(d.issue_time || '00:00:00').slice(0, 8)}+03:00`;
+    qm = QR.encode(QR.ascii(QR.zatcaTLV({ seller: ORG.name_ar, vatNo: ORG.vat_number || '', timestamp: new Date(ts).toISOString().replace('.000', ''), total: (d.total / 100).toFixed(2), vat: (d.vat_total / 100).toFixed(2) })));
+    qr = QR.svg(qm, 3); } catch { qr = ''; qm = null; }
+  window.__lastReceipt = () => receiptCanvas(d, method, paid, opt, qm, (localStorage.getItem(POS_PAPER) === '58') ? 384 : 576).toDataURL('image/png');
   const bg = document.createElement('div'); bg.className = 'drawer-bg receipt-bg';
   const paper = () => { try { return localStorage.getItem(POS_PAPER) === '58' ? '58' : '80'; } catch { return '80'; } };
   bg.innerHTML = `<div class="receipt-wrap"><div class="row no-print rc-paper" role="group" aria-label="مقاس ورق الطابعة" style="gap:6px;justify-content:center;margin-bottom:10px"><span class="xs" style="color:#fff">مقاس الورق:</span>${['58', '80'].map(w => `<button type="button" class="btn sm ${paper() === w ? 'primary' : 'secondary'}" data-paper="${w}" aria-pressed="${paper() === w}">${w} ملم</button>`).join('')}</div><div class="receipt80${paper() === '58' ? ' rc58' : ''}" id="rcpt">
@@ -86,13 +88,15 @@ function posReceipt(d, method, paid, opt = {}) {
       ${method ? `<div class="rc-row"><span>الدفع</span><span>${method === 'cash' ? 'نقداً' : 'شبكة / مدى'}</span></div>` : ''}${opt.reprint && d.total - d.amount_paid > 0 ? `<div class="rc-row"><span>المتبقي</span><span class="num">${money(d.total - d.amount_paid)}</span></div>` : ''}
       ${paid ? `<div class="rc-row"><span>المستلم</span><span class="num">${money(paid)}</span></div><div class="rc-row"><span>الباقي</span><span class="num">${money(paid - d.total)}</span></div>` : ''}
       <div style="text-align:center;margin-top:8px">${qr}</div>${ORG.invoice_footer ? `<p style="text-align:center;font-size:11px;margin:6px 0 0">${esc(ORG.invoice_footer)}</p>` : '<p style="text-align:center;font-size:11px;margin:6px 0 0">شكراً لزيارتكم</p>'}</div>
-    <div class="row no-print" style="gap:8px;justify-content:center;margin-top:12px"><button class="btn primary" id="rprint">${icon('down')}طباعة الإيصال</button><button class="btn secondary" id="rnew">${opt.reprint ? 'إغلاق' : 'بيع جديد'}</button>${opt.reprint ? '' : `<a class="btn ghost" href="#/invoices/${esc(d.id)}">عرض الفاتورة</a>`}</div></div>`;
+    <div class="row no-print" style="gap:8px;justify-content:center;margin-top:12px">${ANDROID ? `<button class="btn primary" id="rraw">${icon('down')}طباعة مباشرة (RawBT)</button>` : ''}<button class="btn ${ANDROID ? 'secondary' : 'primary'}" id="rprint">${icon('down')}${ANDROID ? 'طباعة عبر المتصفح' : 'طباعة الإيصال'}</button><button class="btn secondary" id="rnew">${opt.reprint ? 'إغلاق' : 'بيع جديد'}</button>${opt.reprint ? '' : `<a class="btn ghost" href="#/invoices/${esc(d.id)}">عرض الفاتورة</a>`}</div></div>`;
   document.body.append(bg);
   const close = () => { bg.remove(); $('#posq')?.focus(); };
   $('#rnew', bg).onclick = close; bg.onclick = e => { if (e.target === bg) close(); };
   bg.querySelectorAll('[data-paper]').forEach(b => b.onclick = () => { try { localStorage.setItem(POS_PAPER, b.dataset.paper); } catch { /* private mode */ }
     $('#rcpt', bg).classList.toggle('rc58', b.dataset.paper === '58');
     bg.querySelectorAll('[data-paper]').forEach(x => { const on = x === b; x.className = 'btn sm ' + (on ? 'primary' : 'secondary'); x.setAttribute('aria-pressed', on); }); });
+  if ($('#rraw', bg)) $('#rraw', bg).onclick = () => { const c = receiptCanvas(d, method, paid, opt, qm, paper() === '58' ? 384 : 576);
+    location.href = 'rawbt:data:image/png;base64,' + c.toDataURL('image/png').split(',')[1]; };
   $('#rprint', bg).onclick = () => { document.body.classList.add('print-receipt');
     // page = exactly the receipt: paper width × receipt height, so the printer driver neither shrinks an A4 page nor feeds blank paper
     const w = paper() === '58' ? 58 : 80, el = $('#rcpt', bg), st = document.createElement('style'); st.id = 'rc-page';
@@ -101,6 +105,43 @@ function posReceipt(d, method, paid, opt = {}) {
     window.print(); setTimeout(() => { document.body.classList.remove('print-receipt'); st.remove(); }, 800); };
   $('#rnew', bg).focus();
 }
+
+const ANDROID = /android/i.test(navigator.userAgent);
+// The receipt as a black-and-white picture at the printer's own resolution (58 mm = 384 dots, 80 mm = 576 dots at 203 dpi).
+// Thermal print apps (RawBT) print a picture edge to edge, so nothing depends on how the browser lays out a page.
+function receiptCanvas(d, method, paid, opt = {}, qm = null, W = 384) {
+  const k = W / 384, pad = Math.round(8 * k), F = n => Math.round(n * k), FONT = '"IBM Plex Sans Arabic","Noto Sans Arabic","Noto Naskh Arabic",Tahoma,sans-serif';
+  const rows = [];   // [kind, ...] — measured twice: once for height, once to draw
+  const line = (t, size = 22, bold = false, align = 'center') => rows.push(['t', t, size, bold, align]);
+  const pair = (a, b, size = 21, bold = false) => rows.push(['p', a, b, size, bold]);
+  const rule = () => rows.push(['r']), gap = h => rows.push(['g', h]);
+  line(ORG.name_ar, 28, true); if (ORG.vat_number) line('الرقم الضريبي ' + ORG.vat_number, 20); if (ORG.city) line(ORG.city, 20);
+  gap(6); line(d.kind === 'tax_invoice' ? 'فاتورة ضريبية' : 'فاتورة ضريبية مبسطة', 23, true); line(d.kind === 'tax_invoice' ? 'Tax Invoice' : 'Simplified Tax Invoice', 19);
+  if (opt.reprint) line('(نسخة)', 18); gap(6);
+  pair('الرقم', d.number || ''); pair('التاريخ', `${d.issue_date} ${(d.issue_time || '').slice(0, 5)}`); if (d.party) pair('العميل', d.party.name); rule();
+  d.lines.forEach(l => { line(l.description || '', 21, true, 'right'); pair(`${fq(l.qty)} × ${money(l.unit_price)}`, money(Number(l.line_net) + Number(l.line_vat)), 20); gap(4); }); rule();
+  pair('الإجمالي قبل الضريبة', money(d.subtotal)); pair('ضريبة القيمة المضافة 15%', money(d.vat_total)); pair('الإجمالي', money(d.total) + ' ر.س', 26, true);
+  if (method) pair('الدفع', method === 'cash' ? 'نقداً' : 'شبكة / مدى');
+  if (paid) { pair('المستلم', money(paid)); pair('الباقي', money(paid - d.total)); }
+  if (opt.reprint && d.total - d.amount_paid > 0) pair('المتبقي', money(d.total - d.amount_paid));
+  if (qm) rows.push(['q']); line(ORG.invoice_footer || 'شكراً لزيارتكم', 19); gap(F(40) / k);
+  const c = document.createElement('canvas'), x = c.getContext('2d'), qs = Math.min(W - 2 * pad, F(230));
+  const wrap = (t, size, bold, maxW) => { x.font = `${bold ? 700 : 500} ${F(size)}px ${FONT}`; const out = []; let cur = '';
+    String(t).split(/\s+/).forEach(w => { const tryL = cur ? cur + ' ' + w : w; if (x.measureText(tryL).width > maxW && cur) { out.push(cur); cur = w; } else cur = tryL; }); out.push(cur); return out; };
+  const pass = draw => { let y = pad; for (const r of rows) {
+    if (r[0] === 't') { for (const ln of wrap(r[1], r[2], r[3], W - 2 * pad)) { const h = F(r[2] * 1.45); if (draw) { x.font = `${r[3] ? 700 : 500} ${F(r[2])}px ${FONT}`; x.direction = 'rtl'; x.textAlign = r[4] === 'right' ? 'right' : 'center'; x.fillText(ln, r[4] === 'right' ? W - pad : W / 2, y + F(r[2])); } y += h; } }
+    else if (r[0] === 'p') { const h = F(r[3] * 1.5); if (draw) { x.font = `${r[4] ? 700 : 500} ${F(r[3])}px ${FONT}`; x.direction = 'rtl'; x.textAlign = 'right'; x.fillText(r[1], W - pad, y + F(r[3]));
+        x.direction = 'ltr'; x.textAlign = 'left'; x.fillText(r[2], pad, y + F(r[3])); } y += h; }
+    else if (r[0] === 'r') { if (draw) { x.setLineDash([F(6), F(4)]); x.lineWidth = Math.max(2, F(2)); x.beginPath(); x.moveTo(pad, y + F(8)); x.lineTo(W - pad, y + F(8)); x.stroke(); x.setLineDash([]); } y += F(18); }
+    else if (r[0] === 'g') y += F(r[1]);
+    else if (r[0] === 'q') { const n = qm.length, m = Math.floor(qs / (n + 8)), sz = m * (n + 8), ox = Math.round((W - sz) / 2) + 4 * m;
+      if (draw) qm.forEach((row, j) => row.forEach((v, i) => { if (v) x.fillRect(ox + i * m, y + 4 * m + j * m, m, m); })); y += sz; } }
+    return y; };
+  c.width = W; c.height = 10; c.height = Math.ceil(pass(false) + pad);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, c.height); x.fillStyle = '#000'; x.strokeStyle = '#000'; pass(true);
+  return c;
+}
+window.receiptCanvas = receiptCanvas;
 
 const POS_ROUTES = [
   [/^#\/pos$/, gate('pos', 'نقطة البيع', 'sales', posView)],

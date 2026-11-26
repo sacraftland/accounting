@@ -318,6 +318,13 @@ with sync_playwright() as p:
     check('invoice page: thermal receipt reprint', pg.locator('#rcpt').count() == 1 and '(نسخة)' in pg.inner_text('#rcpt') and 'إغلاق' in pg.inner_text('#rnew')
           and pg.locator('#rcpt svg').count() == 1, pg.inner_text('body')[:200])
     check('invoice page: reprint keeps the 58 mm choice off by default here', pg.locator('#rcpt.rc58').count() == 0)
+    pg.click('[data-paper="58"]'); pg.wait_for_timeout(150)
+    import base64
+    png = base64.b64decode(pg.evaluate('window.__lastReceipt()').split(',')[1]); (SHOTS / 'S67d-receipt-picture-58.png').write_bytes(png)
+    import cv2, numpy as np
+    img = cv2.imdecode(np.frombuffer(png, np.uint8), 1)
+    check('RawBT picture: 384 dots wide, QR readable', img.shape[1] == 384 and img.shape[0] > 400 and cv2.QRCodeDetector().detectAndDecode(img)[0] != '', str(img.shape))
+    pg.click('[data-paper="80"]'); pg.wait_for_timeout(150)
     pg.click('#rnew'); pg.wait_for_timeout(200)
     check('invoice page: closing the receipt returns to the invoice', pg.locator('#rcpt').count() == 0 and '/invoices/' in pg.url)
     go(pg, '#/pos', 1200)
