@@ -291,7 +291,8 @@ async function invoiceEditView(id) {
   const srv = api.mode === 'supabase';
   const [parties, items, existing, whs, ccs] = await Promise.all([api.listParties('customer'), api.listItems(), id ? api.getDocument(id) : null, srv ? api.listWarehouses() : [], srv ? api.listCostCenters() : []]);
   if (existing && existing.status !== 'draft') { location.hash = '#/invoices/' + id; return; }
-  const doc = existing || { kind: 'tax_invoice', party_id: '', issue_date: riyadhToday(), due_date: '', note: '' };
+  let pre = null; try { pre = JSON.parse(sessionStorage.getItem('doc-prefill') || 'null'); } catch { pre = null; } sessionStorage.removeItem('doc-prefill');
+  const doc = existing || { kind: 'tax_invoice', party_id: pre?.party || '', issue_date: riyadhToday(), due_date: '', note: pre?.note || '', cost_center_id: pre?.cc || null };
   let lines = existing ? existing.lines.map(l => ({ item_id: l.item_id || '', description: l.description, qty: Number(l.qty), unit_price: l.unit_price, discount: l.discount || 0, tax_category: l.tax_category, vat_rate: Number(l.vat_rate) }))
     : [{ item_id: '', description: '', qty: 1, unit_price: 0, discount: 0, tax_category: 'S', vat_rate: 15 }];
   const itemById = Object.fromEntries(items.map(i => [i.id, i]));
@@ -647,6 +648,7 @@ const ROUTES = [
   ...EXT_ROUTES,
   ...EXT2_ROUTES,
   ...EXT3_ROUTES,
+  ...PROJECT_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

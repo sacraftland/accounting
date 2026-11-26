@@ -183,6 +183,8 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/RETURN_MORE_THAN_ISSUED/i, 'لا يمكن إرجاع أكثر مما صُرف للمشروع'], [/ISSUE_PROJECT/i, 'اختر المشروع'], [/ISSUE_SERVICE/i, 'الخدمات لا تُصرف من المخزون'], [/TIMESHEET_POSTED/i, 'الساعات المرحّلة لا تُعدَّل'],
+  [/TASK_DATES/i, 'تاريخ الاستحقاق قبل تاريخ البداية'], [/PROJECT_CODE/i, 'رمز المشروع مستخدم'], [/PROJECT_NAME/i, 'أدخل رمز المشروع واسمه'], [/cost_centers_dates/i, 'تاريخ التسليم قبل تاريخ البداية'],
   [/PORTAL_INVALID/i, 'الرابط غير صالح أو أُلغي'], [/TRIP_VAN/i, 'اختر سيارة المندوب'], [/TRIP_OPEN/i, 'لهذه السيارة رحلة مفتوحة — أغلقها أولاً'], [/TRIP_CLOSED/i, 'الرحلة مغلقة'],
   [/ASSET_HAS_DEPRECIATION/i, 'على الأصل إهلاك مرحّل — لا يمكن تعديل تكلفته أو حذفه، استبعده بدلاً من ذلك'], [/ASSET_DISPOSED/i, 'هذا الأصل مستبعد'],
   [/CARD_AMOUNTS/i, 'تحقق من مبلغ التسوية والعمولة'], [/LEAVE_DECIDED/i, 'تم البت في هذا الطلب مسبقاً'],
@@ -397,7 +399,21 @@ const SupabaseAPI = (cfg) => {
     async listLanded(billId) { return ok(await sb.from('landed_costs').select('*').eq('bill_id', billId)); },
     async saveLanded(billId, rows) { const o = await orgId(); ok(await sb.from('landed_costs').delete().eq('bill_id', billId));
       if (rows.length) ok(await sb.from('landed_costs').insert(rows.map(r => ({ org_id: o, bill_id: billId, description: r.description, amount: r.amount })))); },
-    async listCostCenters() { return ok(await sb.from('cost_centers').select('*').eq('org_id', await orgId()).order('code')); },
+    async listCostCenters(all) { return ok(await sb.from('cost_centers').select('*').eq('org_id', await orgId()).order('code')).filter(c => all || !c.is_template)
+      .map(c => ({ ...c, contract_value: c.contract_value == null ? null : Number(c.contract_value), budget_other: c.budget_other == null ? null : Number(c.budget_other), production_qty: c.production_qty == null ? null : Number(c.production_qty) })); },
+    // ---- projects: plan, materials, workers, hours, copies ----
+    async listProjectMaterials(cc) { return ok(await sb.from('project_materials').select('*').eq('cost_center_id', cc)).map(m => ({ ...m, planned_qty: Number(m.planned_qty) })); },
+    async saveProjectMaterial(m) { return ok(await sb.from('project_materials').upsert({ ...m, org_id: await orgId() }, { onConflict: 'cost_center_id,item_id' }).select().single()); },
+    async deleteProjectMaterial(id) { ok(await sb.from('project_materials').delete().eq('id', id)); },
+    async projectStock(cc) { return ok(await sb.from('stock_docs').select('id,kind,number,doc_date,status,from_warehouse_id,to_warehouse_id,stock_doc_lines(item_id,qty,unit_cost)').eq('org_id', await orgId()).eq('cost_center_id', cc).in('kind', ['issue', 'issue_return']).order('doc_date', { ascending: false }))
+      .map(d => ({ ...d, stock_doc_lines: d.stock_doc_lines.map(l => ({ ...l, qty: Number(l.qty), unit_cost: Number(l.unit_cost || 0) })) })); },
+    async listWorkers() { return ok(await sb.rpc('list_workers', { p_org: await orgId() })).map(w => ({ ...w, hour_rate: w.hour_rate == null ? null : Number(w.hour_rate) })); },
+    async listTimesheets(cc) { return ok(await sb.from('timesheets').select('*').eq('cost_center_id', cc).order('work_date', { ascending: false }).order('created_at', { ascending: false }))
+      .map(t => ({ ...t, hours: Number(t.hours), rate: Number(t.rate), amount: Number(t.amount) })); },
+    async addTimesheets(rows) { const o = await orgId(); return ok(await sb.from('timesheets').insert(rows.map(r => ({ ...r, org_id: o }))).select()); },
+    async deleteTimesheet(id) { ok(await sb.from('timesheets').delete().eq('id', id)); },
+    async postLabor(cc, until) { return ok(await sb.rpc('post_labor', { p_cc: cc, p_until: until })); },
+    async copyProject(src, code, name, party, start, template) { return ok(await sb.rpc('copy_project', { p_src: src, p_code: code, p_name: name, p_party: party || null, p_start: start || null, p_template: !!template })); },
     async saveCostCenter(c) { return ok(await sb.from('cost_centers').upsert(nulls({ ...c, org_id: await orgId() })).select().single()); },
     // ---------- expenses ----------
     async listExpenses() { return ok(await sb.from('expenses').select('*, accounts(code,name_ar)').eq('org_id', await orgId()).order('expense_date', { ascending: false }).order('created_at', { ascending: false })); },

@@ -73,7 +73,8 @@ async function docEditView(key, id) {
   if (existing && existing.status !== 'draft') { location.hash = '#/' + key + '/' + id; return; }
   if (!can(c.module, 'create')) { location.hash = '#/' + key + (id ? '/' + id : ''); return; }
   const landed = existing && c.landed ? await api.listLanded(existing.id) : [];
-  const doc = existing || { kind: c.kinds[0][0], party_id: '', issue_date: riyadhToday(), due_date: '', note: '', warehouse_id: whs[0]?.id };
+  let pre = null; try { pre = JSON.parse(sessionStorage.getItem('doc-prefill') || 'null'); } catch { pre = null; } sessionStorage.removeItem('doc-prefill');
+  const doc = existing || { kind: c.kinds[0][0], party_id: pre?.party || '', issue_date: riyadhToday(), due_date: '', note: pre?.note || '', warehouse_id: whs[0]?.id, cost_center_id: pre?.cc || null };
   const blank = () => ({ item_id: '', account_id: '', description: '', qty: 1, unit_price: 0, discount: 0, tax_category: 'S', vat_rate: 15 });
   let lines = existing?.lines?.length ? existing.lines.map(l => ({ item_id: l.item_id || '', account_id: l.account_id || '', description: l.description, qty: Number(l.qty), unit_price: l.unit_price, discount: l.discount || 0, tax_category: l.tax_category, vat_rate: Number(l.vat_rate) })) : [blank()];
   let lc = landed.map(x => ({ description: x.description, amount: x.amount }));
@@ -594,7 +595,7 @@ async function mfgEditView(id, qs) {
   const products = items.filter(i => i.track_stock && i.kind === 'product'), comps = items.filter(i => i.track_stock);
   const costAccts = accs.filter(a => a.is_postable && (['liability'].includes(a.type) || ['cash', 'bank', 'custody'].includes(a.system_key)));
   const preBom = boms.find(b => b.id === qs?.get('bom'));
-  const m = ex || { item_id: preBom?.item_id || '', qty: 1, order_date: riyadhToday(), warehouse_id: whs[0]?.id };
+  const m = ex || { item_id: qs?.get('item') || preBom?.item_id || '', qty: Number(qs?.get('qty')) || 1, order_date: riyadhToday(), warehouse_id: whs[0]?.id, cost_center_id: qs?.get('cc') || null };
   let lines = ex?.lines?.map(l => ({ item_id: l.item_id, planned_qty: l.planned_qty, actual_qty: l.actual_qty, waste_qty: l.waste_qty })) || [];
   let costs = ex?.costs?.map(c => ({ description: c.description, amount: c.amount, account_id: c.account_id })) || [];
   const fromBom = () => { const b = boms.find(x => x.item_id === $('#f-item').value), n = num($('#f-qty').value) || 0; if (!b) { lines = []; return; }

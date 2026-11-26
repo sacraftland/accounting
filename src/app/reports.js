@@ -240,6 +240,9 @@ function employeeDrawer(e, ccs) {
       <label class="row" style="gap:8px"><input type="checkbox" name="gosi_enrolled" ${e.gosi_enrolled ? 'checked' : ''}> مسجّل في التأمينات الاجتماعية</label>
       <p class="help" id="gosihint"></p></fieldset>
     ${field('iban', 'الآيبان (لتحويل الراتب)', { value: e.iban || '', attrs: 'dir="ltr" maxlength="34" placeholder="SA…"' })}
+    <fieldset><legend>تكلفة ساعة العمل في المشاريع</legend><div class="form-grid">
+      ${select('rate_mode', 'طريقة الحساب', [['auto', 'تلقائي من الراتب'], ['manual', 'أدخلها يدوياً']], e.hourly_rate != null ? 'manual' : 'auto')}
+      ${field('hourly_rate', 'تكلفة الساعة (ر.س)', { type: 'money', value: e.hourly_rate != null ? money(e.hourly_rate) : '' })}</div><p class="help" id="ratehint"></p></fieldset>
     ${ccs.length ? `<div class="field"><label for="f-cost_center_id">مركز التكلفة / المشروع</label><select class="input" id="f-cost_center_id" name="cost_center_id">${optList(ccs.map(c => [c.id, c.name]), e.cost_center_id, '— بدون —')}</select></div>` : ''}
     ${e.status === 'terminated' || e.end_date ? field('end_date', 'تاريخ انتهاء الخدمة', { type: 'date', value: e.end_date || '' }) : ''}`,
     async v => { const n = k => { const x = toHalalas(v[k] || 0); if (!Number.isFinite(x) || x < 0) throw new AppError('تحقق من مبالغ الراتب'); return x; };
@@ -248,11 +251,16 @@ function employeeDrawer(e, ccs) {
       const other = n('other');
       await api.saveEmployee({ ...(e.id ? { id: e.id } : {}), full_name: v.full_name.trim(), job_title: v.job_title || null, is_saudi: v.is_saudi === '1', national_id: toLatin(v.national_id) || null, phone: toLatin(v.phone) || null,
         hire_date: v.hire_date, status: v.status, basic_salary: basic, housing_allowance: n('housing_allowance'), transport_allowance: n('transport_allowance'), other_allowances: other ? { other } : {},
+        hourly_rate: v.rate_mode === 'manual' ? (() => { const r = toHalalas(v.hourly_rate || 0); if (!(r > 0)) throw new AppError('أدخل تكلفة الساعة'); return r; })() : null,
         gosi_enrolled: !!v.gosi_enrolled, iban: iban || null, cost_center_id: v.cost_center_id || null, end_date: v.status === 'terminated' ? (v.end_date || riyadhToday()) : (v.end_date || null) });
       toast('تم حفظ الموظف'); employeesView(); });
   const hint = () => { const b = toHalalas($('#f-basic_salary').value || 0) || 0, h = toHalalas($('#f-housing_allowance').value || 0) || 0, base = Math.min(b + h, 4500000), sa = $('#f-is_saudi').value === '1';
     $('#gosihint').textContent = $('[name=gosi_enrolled]').checked ? (sa ? `التأمينات: على الموظف ${money(base * 0.0975)} · على المنشأة ${money(base * 0.1175)}` : `التأمينات (أخطار مهنية): على المنشأة ${money(base * 0.02)}`) : ''; };
   ['#f-basic_salary', '#f-housing_allowance', '#f-is_saudi', '[name=gosi_enrolled]'].forEach(s => $(s)?.addEventListener('input', hint)); $('#f-is_saudi').addEventListener('change', hint); hint();
+  const rh = () => { const tot = ['#f-basic_salary', '#f-housing_allowance', '#f-transport_allowance', '#f-other'].reduce((a, k) => a + (toHalalas($(k)?.value || 0) || 0), 0), man = $('#f-rate_mode').value === 'manual';
+    $('#f-hourly_rate').closest('.field').hidden = !man;
+    $('#ratehint').textContent = man ? 'تُستخدم هذه التكلفة لكل ساعة يُسجَّل فيها الموظف على مشروع (ويمكن تغييرها في الإدخال نفسه للساعات الإضافية).' : `التكلفة التلقائية: ${money(Math.round(tot / 240))} ر.س للساعة (الراتب والبدلات ÷ 30 يوماً × 8 ساعات).`; };
+  ['#f-basic_salary', '#f-housing_allowance', '#f-transport_allowance', '#f-other'].forEach(k => $(k)?.addEventListener('input', rh)); $('#f-rate_mode').addEventListener('change', rh); rh();
 }
 
 // ---------- payroll ----------

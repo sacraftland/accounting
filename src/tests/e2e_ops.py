@@ -264,13 +264,13 @@ with sync_playwright() as p:
     check('salaries paid', one("select status from payroll_runs") == 'paid', toast_bad(pg))
     check('ledger still balanced after payroll', one("select sum(debit) = sum(credit) from journal_lines") == 't')
     # ---------- projects ----------
-    go(pg, '#/projects', 1000); pg.click('#newcc2'); pg.fill('.drawer #f-name', 'كرفان 8 متر — مؤسسة البر'); pg.fill('.drawer #f-contract_value', '40000'); drawer_submit(pg)
+    go(pg, '#/projects', 1000); pg.click('#newp2'); pg.wait_for_timeout(400); pg.fill('.drawer #f-name', 'كرفان 8 متر — مؤسسة البر'); pg.fill('.drawer #f-contract_value', '40000'); drawer_submit(pg); pg.wait_for_timeout(800)
     check('project saved', one("select code||':'||contract_value from cost_centers") == 'P-001:4000000', toast_bad(pg))
     go(pg, '#/expenses', 1000); pg.click('#newx'); pg.select_option('.drawer #f-account_id', index=2); pg.fill('.drawer #f-description', 'نقل الكرفان')
     pg.fill('.drawer #f-amount', '500'); pg.select_option('.drawer #f-cost_center_id', index=1); drawer_submit(pg); pg.wait_for_timeout(1500)
     check('expense tagged with project', one("select count(*) from journal_lines where cost_center_id is not null") != '0', toast_bad(pg))
     cc = one("select id from cost_centers")
-    go(pg, f'#/projects/{cc}', 1500); t = pg.inner_text('#main')
+    go(pg, f'#/projects/{cc}?tab=docs', 1500); t = pg.inner_text('#main')
     check('project page shows its cost', '500.00' in t and 'نقل الكرفان' in t, t[:1500])
     pg.screenshot(path=str(SHOTS / 'S65-project.png'), full_page=True)
 

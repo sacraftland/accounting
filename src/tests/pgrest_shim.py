@@ -111,7 +111,7 @@ def tail(ops, alias):
 
 def cast(src, c, ty):
     if ty.startswith('json'): return f"({src}->{lit(c)})::{ty}"
-    if ty.endswith('[]'): return f"(select array_agg(x::{ty[:-2]}) from json_array_elements_text({src}->{lit(c)}) x)"
+    if ty.endswith('[]'): return f"(case when json_typeof({src}->{lit(c)}) = 'array' then coalesce((select array_agg(x::{ty[:-2]}) from json_array_elements_text({src}->{lit(c)}) x), '{{}}') end)"
     return f"({src}->>{lit(c)})::{ty}"
 
 def typed(t, cols, src='j'):
