@@ -27,7 +27,7 @@ html = f'''<!DOCTYPE html>
 {(here / 'qr.js').read_text()}
 const CHART = {json.dumps(chart, ensure_ascii=False)};
 {(here / 'data.js').read_text()}
-{(here / 'app.js').read_text().replace('// @@OPS@@', (here / 'ops.js').read_text() + '\n' + (here / 'reports.js').read_text() + '\n' + (here / 'reports2.js').read_text() + '\n' + (here / 'pos.js').read_text() + '\n' + (here / 'ext.js').read_text() + '\n' + (here / 'ext2.js').read_text() + '\n' + (here / 'ext3.js').read_text() + '\n' + (here / 'projects.js').read_text() + '\n' + (here / 'theme.js').read_text(), 1)}
+{(here / 'app.js').read_text().replace('// @@OPS@@', (here / 'ops.js').read_text() + '\n' + (here / 'reports.js').read_text() + '\n' + (here / 'reports2.js').read_text() + '\n' + (here / 'pos.js').read_text() + '\n' + (here / 'ext.js').read_text() + '\n' + (here / 'ext2.js').read_text() + '\n' + (here / 'ext3.js').read_text() + '\n' + (here / 'projects.js').read_text() + '\n' + (here / 'theme.js').read_text() + '\n' + (here / 'design.js').read_text(), 1)}
 </script>
 </body>
 </html>

@@ -8,11 +8,24 @@ const THEME_DEFAULT = { mode: 'light', sidebar: 'dark', size: 'normal', density:
 const ACCENTS = [['#4f6b3a', 'زيتوني'], ['#2563a8', 'أزرق'], ['#13795b', 'زمردي'], ['#8a2c3b', 'عنابي'], ['#8a5a2b', 'بني'], ['#c2571a', 'برتقالي'], ['#5b4b9a', 'بنفسجي'], ['#3d4752', 'فحمي']];
 const DASH_WIDGETS = [['approvals', 'بانتظار اعتمادك'], ['kpis', 'المؤشرات الرئيسية'], ['quick', 'اختصارات سريعة'], ['calendar', 'التنبيهات والتقويم'], ['insights', 'الإيرادات والمصروفات'],
   ['projects', 'المشاريع النشطة'], ['top', 'أعلى أرصدة العملاء والموردين'], ['invoices', 'آخر الفواتير']];
-const DASH_DEFAULT = { order: DASH_WIDGETS.map(w => w[0]), hidden: ['quick'] };
+const DASH_DEFAULT = { order: DASH_WIDGETS.map(w => w[0]), hidden: ['quick'], kpis: ['sales_month', 'vat_month', 'ar_open', 'cash'] };
+// KPI cards anyone can pick: [key, label, module(s) needed]
+const KPIS = [['sales_month', 'مبيعات هذا الشهر', 'sales'], ['sales_today', 'مبيعات اليوم', 'sales'], ['vat_month', 'ضريبة المخرجات هذا الشهر', 'sales'], ['ar_open', 'مستحق من العملاء', 'sales'],
+  ['overdue', 'فواتير متأخرة السداد', 'sales'], ['ap_open', 'مستحق للموردين', 'purchases'], ['cash', 'النقدية والبنك', 'accounting|reports'], ['profit_month', 'صافي ربح هذا الشهر', 'accounting|reports'],
+  ['margin_month', 'هامش الربح هذا الشهر', 'accounting|reports'], ['expenses_month', 'مصروفات هذا الشهر', 'accounting|reports'], ['stock_value', 'قيمة المخزون', 'inventory'], ['neg_stock', 'أصناف رصيدها سالب', 'inventory'],
+  ['projects_active', 'مشاريع نشطة', 'accounting|manufacturing'], ['projects_late', 'مشاريع متأخرة عن التسليم', 'accounting|manufacturing'], ['tasks_late', 'مهام متأخرة', '']];
+const kpiAllowed = k => { const m = KPIS.find(x => x[0] === k)?.[2]; return m === '' || (m && m.split('|').some(x => can(x))); };
+// a sensible default per role when neither the user nor the company set one
+const smartDash = () => { const fin = can('sales') || can('accounting') || can('reports');
+  if (fin) return DASH_DEFAULT;
+  if (can('manufacturing') || can('inventory')) return { order: ['quick', 'projects', 'kpis', 'calendar', 'approvals', 'insights', 'top', 'invoices'], hidden: ['insights', 'top', 'invoices'], kpis: ['projects_active', 'projects_late', 'tasks_late', 'stock_value'] };
+  return { order: ['quick', 'calendar', 'kpis', 'approvals', 'projects', 'insights', 'top', 'invoices'], hidden: ['insights', 'top', 'invoices', 'projects'], kpis: ['tasks_late'] }; };
 let UI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || 'null') || {}; } catch { return {}; } })();
 const uiTheme = () => ({ ...THEME_DEFAULT, ...(UI.theme || {}) });
-const uiDash = () => { const d = { ...DASH_DEFAULT, ...(UI.dash || {}) }; const known = DASH_WIDGETS.map(w => w[0]);
-  return { order: [...d.order.filter(k => known.includes(k)), ...known.filter(k => !d.order.includes(k))], hidden: d.hidden.filter(k => known.includes(k)) }; };
+const dashSource = () => UI.dash ? 'mine' : ORG?.role_dashboard ? 'role' : 'default';
+const uiDash = () => { const base = UI.dash || ORG?.role_dashboard || smartDash(), d = { ...DASH_DEFAULT, ...base }, known = DASH_WIDGETS.map(w => w[0]);
+  return { order: [...d.order.filter(k => known.includes(k)), ...known.filter(k => !d.order.includes(k))], hidden: (d.hidden || []).filter(k => known.includes(k)),
+    kpis: (d.kpis || DASH_DEFAULT.kpis).filter(k => KPIS.some(x => x[0] === k)).slice(0, 8) }; };
 async function saveUI(patch) { UI = { ...UI, ...patch }; try { localStorage.setItem(UI_KEY, JSON.stringify(UI)); } catch { /* private mode */ }
   if (api.mode === 'supabase') try { await api.client.auth.updateUser({ data: { ui_prefs: UI } }); } catch { /* offline: kept locally */ } }
 async function loadUI() { if (api.mode !== 'supabase') return; try { const u = (await api.client.auth.getUser()).data.user, p = u?.user_metadata?.ui_prefs;
@@ -85,16 +98,27 @@ async function appearanceView() {
 
 // ---------- dashboard customization ----------
 function dashCustomize() {
-  let d = uiDash(); const N = Object.fromEntries(DASH_WIDGETS);
-  const f = drawer('تخصيص لوحة التحكم', `<p class="muted">اختر الأقسام التي تظهر لك ورتّبها. يُحفظ على حسابك.</p><ol class="dash-cfg" id="dcfg"></ol>
-    <button type="button" class="btn ghost sm" id="dreset">الترتيب الافتراضي</button>`, async () => { await saveUI({ dash: d }); toast('حُفظت لوحة التحكم'); dashboardView(); }, 'حفظ');
+  let d = uiDash(); const N = Object.fromEntries(DASH_WIDGETS), src = dashSource();
+  const canRoles = api.mode === 'supabase' && can('users', 'create');
+  const f = drawer('تخصيص لوحة التحكم', `<p class="muted">اختر الأقسام التي تظهر لك ورتّبها. يُحفظ على حسابك.${src === 'role' ? ' <span class="chip">تعرض الآن الافتراضي لدورك</span>' : ''}</p><ol class="dash-cfg" id="dcfg"></ol>
+    <fieldset><legend>بطاقات المؤشرات (حتى 8)</legend><div class="wpick" id="kcfg">${KPIS.filter(k => kpiAllowed(k[0])).map(([k, t]) => `<label class="row" style="gap:6px"><input type="checkbox" value="${k}" ${d.kpis.includes(k) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></fieldset>
+    <div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="dreset">${ORG?.role_dashboard ? 'افتراضي دوري' : 'الترتيب الافتراضي'}</button></div>
+    ${canRoles ? `<fieldset><legend>لوحة افتراضية لدور</legend><p class="xs muted">اجعل هذا الترتيب الافتراضي لكل من في الدور (مثل المحاسب أو مشرف الورشة) — ومن خصّص لوحته يبقى على تخصيصه.</p>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><select class="input" id="drole" style="height:38px;width:auto" aria-label="الدور"><option value="">— اختر الدور —</option></select><button type="button" class="btn secondary sm" id="drsave">حفظ للدور</button><button type="button" class="btn ghost sm" id="drclear">إزالة افتراضي الدور</button></div></fieldset>` : ''}`,
+    async () => { await saveUI({ dash: d }); toast('حُفظت لوحة التحكم'); dashboardView(); }, 'حفظ لي');
+  $('#kcfg', f).addEventListener('change', e => { const v = e.target.value; if (e.target.checked) { if (d.kpis.length >= 8) { e.target.checked = false; return toast('حتى 8 بطاقات', 'warn'); } d.kpis = [...d.kpis, v]; } else d.kpis = d.kpis.filter(k => k !== v); });
+  if (canRoles) { api.listRoles().then(rs => { $('#drole', f).insertAdjacentHTML('beforeend', rs.map(r => `<option value="${esc(r.id)}">${esc(r.name)}${r.dashboard ? ' ✓' : ''}</option>`).join('')); }).catch(() => {});
+    const roleAct = async dash => { const r = $('#drole', f).value; if (!r) return toast('اختر الدور', 'warn'); try { await api.setRoleDashboard(r, dash); toast(dash ? 'حُفظت لوحة الدور' : 'أُزيل افتراضي الدور'); } catch (x) { fail(x); } };
+    $('#drsave', f).onclick = () => roleAct(d); $('#drclear', f).onclick = () => roleAct(null); }
   const draw = () => { $('#dcfg', f).innerHTML = d.order.map((k, i) => `<li data-k="${k}"><label class="row" style="gap:8px;flex:1"><input type="checkbox" ${d.hidden.includes(k) ? '' : 'checked'} aria-label="إظهار ${esc(N[k])}"> ${esc(N[k])}</label>
     <button type="button" class="btn ghost icon sm" data-up ${i ? '' : 'disabled'} aria-label="أعلى">▲</button><button type="button" class="btn ghost icon sm" data-dn ${i < d.order.length - 1 ? '' : 'disabled'} aria-label="أسفل">▼</button></li>`).join(''); };
   $('#dcfg', f).addEventListener('click', e => { const li = e.target.closest('li'); if (!li) return; const i = d.order.indexOf(li.dataset.k);
     if (e.target.closest('[data-up]') && i > 0) { [d.order[i - 1], d.order[i]] = [d.order[i], d.order[i - 1]]; draw(); }
     if (e.target.closest('[data-dn]') && i < d.order.length - 1) { [d.order[i + 1], d.order[i]] = [d.order[i], d.order[i + 1]]; draw(); } });
   $('#dcfg', f).addEventListener('change', e => { const li = e.target.closest('li'); if (!li) return; const k = li.dataset.k; d.hidden = e.target.checked ? d.hidden.filter(x => x !== k) : [...d.hidden, k]; });
-  $('#dreset', f).onclick = () => { d = { order: [...DASH_DEFAULT.order], hidden: [...DASH_DEFAULT.hidden] }; draw(); };
+  $('#dreset', f).onclick = async () => { const { dash, ...rest } = UI; UI = rest; try { localStorage.setItem(UI_KEY, JSON.stringify(UI)); } catch { /* */ }
+    if (api.mode === 'supabase') try { await api.client.auth.updateUser({ data: { ui_prefs: UI } }); } catch { /* */ }
+    f.closest('.drawer-bg').remove(); toast('استُعيدت اللوحة الافتراضية'); dashboardView(); };
   draw();
 }
 async function dashQuick() {
@@ -114,6 +138,25 @@ async function dashProjects() {
     ${act.map(c => { const t = ts.filter(x => x.cost_center_id === c.id), done = t.filter(x => x.status === 'done').length, r = P[c.id] || { revenue: 0, cogs: 0, expenses: 0 }, pr = r.revenue - r.cogs - r.expenses, late = c.due_date && c.due_date < today;
       return `<tr class="click" data-href="#/projects/${esc(c.id)}"><td><a class="rowlink" href="#/projects/${esc(c.id)}">${esc(c.name)}</a></td><td class="num m-hide ${late ? 'down' : ''}">${esc(c.due_date || '—')}${late ? ' ⚠' : ''}</td>
         <td>${t.length ? `<div class="bar"><i style="width:${(done / t.length * 100).toFixed(0)}%"></i></div><span class="xs muted num">${done}/${t.length}</span>` : '<span class="xs muted">—</span>'}</td><td class="amt num ${pr < 0 ? 'down' : ''}">${money(pr)}</td></tr>`; }).join('')}</tbody></table></div></section>`;
+}
+
+async function dashKpis(c) {
+  const ks = uiDash().kpis.filter(kpiAllowed); if (!ks.length) return '';
+  const need = k => ks.includes(k), today = riyadhToday(), srv = api.mode === 'supabase';
+  const [ms, ap, items, ccs, ts] = await Promise.all([srv && ks.some(k => ['profit_month', 'margin_month', 'expenses_month'].includes(k)) ? api.monthlySummary(1).catch(() => []) : [],
+    srv && need('ap_open') ? api.openDocuments(['purchase_bill']).catch(() => []) : [], ks.some(k => ['stock_value', 'neg_stock'].includes(k)) ? api.listItems().catch(() => []) : [],
+    srv && ks.some(k => k.startsWith('projects')) ? api.listCostCenters().catch(() => []) : [], srv && need('tasks_late') ? api.listTasks().catch(() => []) : []]);
+  const m = ms.at(-1) || { revenue: 0, cogs: 0, expenses: 0 }, net = m.revenue - m.cogs - m.expenses, st = items.filter(i => i.track_stock), pj = ccs.filter(x => x.status === 'active' && x.project_type !== 'internal');
+  const V = { sales_month: [money(c.sales), `${c.mDocs.length} فاتورة`], sales_today: [money(c.docs.filter(d => d.issue_date === today).reduce((a, d) => a + d.subtotal, 0)), 'قبل الضريبة'],
+    vat_month: [money(c.vat), 'تُورَّد في الإقرار الضريبي'], ar_open: [money(c.open), c.overdue.length ? `${c.overdue.length} فاتورة متأخرة` : 'لا يوجد متأخر', c.overdue.length ? 'down' : ''],
+    overdue: [String(c.overdue.length), money(c.overdue.reduce((a, d) => a + d.total - d.amount_paid, 0)) + ' ر.س', c.overdue.length ? 'down' : ''], ap_open: [money(ap.reduce((a, d) => a + d.open, 0)), `${ap.length} فاتورة مفتوحة`],
+    cash: [money(c.cash), 'الصندوق + البنك + الشبكة'], profit_month: [money(net), 'الإيرادات − التكاليف', net < 0 ? 'down' : ''], margin_month: [m.revenue ? (net / m.revenue * 100).toFixed(1) + '%' : '—', 'صافي الربح ÷ الإيرادات'],
+    expenses_month: [money(m.expenses), 'غير تكلفة المبيعات'], stock_value: [money(st.reduce((a, i) => a + Number(i.on_hand) * Number(i.avg_cost), 0)), 'بمتوسط التكلفة'],
+    neg_stock: [String(st.filter(i => i.on_hand < 0).length), 'تحتاج جرداً أو فاتورة شراء', st.some(i => i.on_hand < 0) ? 'down' : ''], projects_active: [String(pj.length), 'لعملاء وإنتاج'],
+    projects_late: [String(pj.filter(x => x.due_date && x.due_date < today).length), 'تجاوزت تاريخ التسليم', pj.some(x => x.due_date && x.due_date < today) ? 'down' : ''],
+    tasks_late: [String(ts.filter(t => t.status !== 'done' && t.due_date && t.due_date < today).length), 'لم تُنجز في موعدها'] };
+  const L = Object.fromEntries(KPIS.map(k => [k[0], k[1]]));
+  return `<div class="grid g4" style="margin-bottom:24px">${ks.map(k => `<div class="card stat" data-kpi="${k}"><div class="label">${esc(L[k])}</div><div class="val num ${V[k][2] || ''}">${V[k][0]}</div><div class="xs muted">${V[k][1]}</div></div>`).join('')}</div>`;
 }
 
 const THEME_ROUTES = [[/^#\/appearance$/, appearanceView]];

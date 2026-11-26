@@ -96,9 +96,9 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['assets', 'box', 'الأصول الثابتة', 'accounting'],
   ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
-  ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null],
+  ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -243,6 +243,7 @@ function onboardingView() {
 
 // ---------- dashboard ----------
 async function dashboardView() {
+  const h0 = location.hash;
   shell('dashboard', loading());
   const [docs, tb, cns] = await Promise.all([api.listDocuments(['tax_invoice', 'simplified_invoice']), api.trialBalance(), api.mode === 'supabase' && can('sales') ? api.listDocuments(['credit_note']) : []]);
   const month = riyadhToday().slice(0, 7), posted = docs.filter(d => d.status === 'posted');
@@ -255,14 +256,11 @@ async function dashboardView() {
   const cash = tb.filter(r => ['1101', '1102', '1103'].includes(r.code)).reduce((a, r) => a + Number(r.balance), 0);
   const W = {
     approvals: pend, quick, calendar: cal, insights: ins, top, projects: projs,
-    kpis: `<div class="grid g4" style="margin-bottom:24px">
-      <div class="card stat"><div class="label">مبيعات هذا الشهر <span class="xs">(قبل الضريبة)</span></div><div class="val num">${money(sales)}</div><div class="xs muted">${mDocs.length} فاتورة${mCn.length ? ` · بعد ${mCn.length} إشعار دائن` : ''}</div></div>
-      <div class="card stat"><div class="label">ضريبة المخرجات هذا الشهر</div><div class="val num">${money(vat)}</div><div class="xs muted">تُورَّد في الإقرار الضريبي</div></div>
-      <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">${money(open)}</div><div class="xs ${overdue.length ? 'down' : 'muted'}">${overdue.length ? overdue.length + ' فاتورة متأخرة' : 'لا يوجد متأخر'}</div></div>
-      <div class="card stat"><div class="label">النقدية والبنك</div><div class="val num">${money(cash)}</div><div class="xs muted">الصندوق + البنك + الشبكة</div></div></div>`,
+    kpis: want('kpis') ? await dashKpis({ sales, vat, open, overdue, cash, mDocs, docs: posted }).catch(() => '') : '',
     invoices: `<h2 style="margin-bottom:12px">آخر الفواتير</h2>
     ${docs.length ? invoiceTable(docs.slice(0, 6)) : empty('receipt', 'لا توجد فواتير بعد', 'ابدأ بإضافة عميل وصنف، ثم أصدر أول فاتورة — يُسجَّل قيدها في الحسابات تلقائياً.', `<div class="row" style="justify-content:center"><a class="btn secondary" href="#/customers">إضافة عميل</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>`)}`,
   };
+  if (location.hash !== h0) return;
   $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><button class="btn ghost" id="dcust">${icon('gear')}تخصيص</button><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
     ${D.order.filter(want).map(k => W[k] ? `<div class="dw" data-w="${k}">${W[k]}</div>` : '').join('') || empty('home', 'لوحة التحكم فارغة', 'أظهر الأقسام التي تريدها من «تخصيص».')}`;
   $('#dcust').onclick = dashCustomize;
@@ -586,7 +584,7 @@ async function trialBalanceView() {
 // ---------- settings ----------
 async function settingsView() {
   shell('settings', loading()); const o = ORG;
-  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1></div>
+  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a></div>
     <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate ${can('settings', 'create') ? '' : 'inert'}>
       <fieldset><legend>الشعار</legend><div class="row"><div class="logo-prev" id="lp">${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="الشعار الحالي">` : icon('box')}</div>
         <div><input type="file" id="logo" accept="image/png,image/jpeg,image/svg+xml" aria-describedby="lh"><p class="help" id="lh">PNG أو JPG، حتى 300 كيلوبايت. يظهر على الفواتير وأعلى القائمة.</p>${o.logo_path ? '<button type="button" class="btn ghost sm" id="rmlogo">إزالة الشعار</button>' : ''}</div></div></fieldset>
@@ -656,6 +654,7 @@ const ROUTES = [
   ...EXT3_ROUTES,
   ...PROJECT_ROUTES,
   ...THEME_ROUTES,
+  ...DESIGN_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

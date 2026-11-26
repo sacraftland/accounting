@@ -432,6 +432,55 @@ details summary { cursor: pointer; margin-top: 8px; }
 [data-theme=dark] .chart .grid{stroke:var(--c-border)}
 [data-theme=dark] .chart .tick{fill:var(--c-text-muted)}
 [data-theme=dark] body{color-scheme:dark}
+
+/* printed-document templates */
+.paper{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.paper.nologo .hd img{display:none}
+.paper.logo-center .hd{flex-direction:column;align-items:center;text-align:center}
+.paper.logo-center .hd > div{text-align:center!important}
+.paper.logo-center .hd img{margin-inline:auto}
+.paper.tpl-classic .hd{border-bottom-color:var(--pa)}
+.paper.tpl-classic table th{background:var(--pa-soft);color:#111}
+.paper.tpl-modern{padding-top:0}
+.paper.tpl-modern .hd{background:var(--pa);color:var(--pa-on);margin:0 -28px 16px;padding:20px 28px;border:0;border-radius:0}
+.paper.tpl-modern table th{background:var(--pa);color:var(--pa-on)}
+.paper.tpl-modern table tbody tr:nth-child(even) td{background:var(--pa-soft)}
+.paper.tpl-modern .p-total{border-top:2px solid var(--pa)}
+.paper.tpl-minimal{border:0;box-shadow:none}
+.paper.tpl-minimal .hd{border-bottom:1px solid #e5e5e5}
+.paper.tpl-minimal .hd b{color:var(--pa)}
+.paper.tpl-minimal table th{background:transparent;border-bottom:2px solid var(--pa);color:#111}
+.paper.tpl-minimal th,.paper.tpl-minimal td{border-bottom-color:#f0f0f0}
+.paper .p-total{border-top:2px solid #000}
+.paper-extra{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-top:18px;padding-top:12px;border-top:1px solid #e5e5e5;flex-wrap:wrap;font-size:12px}
+.paper-extra .p-info{display:grid;gap:10px;max-width:60%}
+.paper-extra .p-bank,.paper-extra .p-terms{display:grid;gap:2px}
+.paper-extra .p-sign{display:flex;align-items:flex-end;gap:18px}
+.paper-extra .p-stamp{max-width:110px;max-height:110px;opacity:.9}
+.paper-extra .p-sig{text-align:center;min-width:150px}
+.paper-extra .p-sig img{max-height:60px;max-width:160px}
+.paper-extra .p-sigline{border-top:1px solid #333;padding-top:4px;margin-top:4px}
+.paper-extra .p-sigline span{color:#555}
+@media (max-width:720px){.paper.tpl-modern .hd{margin:0 -16px 12px;padding:16px}.paper-extra .p-info{max-width:100%}}
+/* workshop display */
+.tv{min-height:100vh;background:#14110e;color:#f3ece0;display:flex;flex-direction:column;padding:24px 32px;gap:20px;font-size:20px}
+.tv header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.tv header img{height:56px;border-radius:10px;background:#fff}
+.tv h1{font-size:32px;margin:0;color:#fff}
+.tv-clock{display:flex;flex-direction:column;align-items:center}.tv-clock b{font-size:44px;line-height:1}.tv-clock span{color:#c3b7a5;font-size:16px}
+.tv-ctl{display:flex;gap:8px}.tv-ctl .btn{opacity:.6}.tv-ctl .btn:hover{opacity:1}
+.tv-grid{display:grid;grid-template-columns:3fr 2fr;gap:24px;flex:1}
+.tv section{background:#221e1a;border-radius:16px;padding:20px 24px;overflow:hidden}
+.tv h2{font-size:26px;margin:0 0 14px;color:#fff}.tv h2 .num{color:#c3b7a5;font-size:20px}
+.tv ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.tv-tasks li{display:grid;grid-template-columns:2fr 1.4fr 1.4fr auto;gap:12px;align-items:center;background:#2d2823;border-radius:10px;padding:12px 16px;border-inline-start:6px solid #6b5d4c}
+.tv-tasks li.doing{border-color:#f4a72a}.tv-tasks li.late{border-color:#e5533d;background:#3a221d}
+.tv-tasks li span{color:#c3b7a5;font-size:17px}.tv-tasks li .w{color:#f3ece0}.tv-tasks li.late .d{color:#ff8a78}
+.tv-proj li{display:grid;gap:6px}.tv-proj .late{color:#ff8a78}
+.tv-bar{height:14px;background:#3d362f;border-radius:7px;overflow:hidden}.tv-bar i{display:block;height:100%;background:#7fbf5a}
+.tv .empty{color:#c3b7a5;background:none;border:0;padding:8px 0}
+.tv footer{color:#8a7f70;font-size:14px;text-align:center}
+@media (max-width:900px){.tv-grid{grid-template-columns:1fr}.tv-tasks li{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -830,7 +879,8 @@ const SupabaseAPI = (cfg) => {
     const pick = m.find(x => x.org_id === localStorage.getItem('daftar-org')) || m[0];
     const org = ok(await sb.from('orgs').select('*').eq('id', pick.org_id).single());
     const perms = ok(await sb.rpc('my_permissions', { p_org: pick.org_id })) || {};
-    return { ...org, my_role: pick.role, perms, org_count: m.length }; }
+    const role_dashboard = pick.role === 'owner' ? null : await sb.rpc('my_role_dashboard', { p_org: pick.org_id }).then(r => r.error ? null : r.data).catch(() => null);
+    return { ...org, my_role: pick.role, perms, org_count: m.length, role_dashboard }; }
   const acctId = async k => ok(await sb.from('accounts').select('id').eq('org_id', await orgId()).eq('system_key', k).single()).id;
   const nulls = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === '' ? null : v]));
   return {
@@ -861,9 +911,10 @@ const SupabaseAPI = (cfg) => {
         p_building: f.building_no || null, p_postal: f.postal_code || null, p_district: f.district || null, p_sector: f.sector || 'general' })); orgCache = null; return { id }; },
     async updateOrg(f) {
       if (f.vat_number && !VAT_RE.test(f.vat_number)) throw new AppError('الرقم الضريبي 15 خانة ويبدأ وينتهي بالرقم 3');
-      const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer', 'allow_negative_stock'];
+      const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer', 'allow_negative_stock', 'invoice_settings', 'stamp_path', 'signature_path'];
       const row = nulls(Object.fromEntries(Object.entries(f).filter(([k]) => allowed.includes(k))));
-      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role, perms: orgCache?.perms, org_count: orgCache?.org_count }; return orgCache; },
+      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role, perms: orgCache?.perms, org_count: orgCache?.org_count, role_dashboard: orgCache?.role_dashboard }; return orgCache; },
+    async setRoleDashboard(role, dash) { ok(await sb.rpc('set_role_dashboard', { p_role: role, p_dash: dash })); },
     // ---- users & invitations (owner / admin) ----
     async whoami() { return ok(await sb.rpc('whoami')); },
     async listMembers() { return ok(await sb.rpc('list_members', { p_org: await orgId() })); },
@@ -1213,9 +1264,9 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['assets', 'box', 'الأصول الثابتة', 'accounting'],
   ['reports', 'chart', 'التقارير المالية', 'reports|accounting'],
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
-  ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null],
+  ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -1360,6 +1411,7 @@ function onboardingView() {
 
 // ---------- dashboard ----------
 async function dashboardView() {
+  const h0 = location.hash;
   shell('dashboard', loading());
   const [docs, tb, cns] = await Promise.all([api.listDocuments(['tax_invoice', 'simplified_invoice']), api.trialBalance(), api.mode === 'supabase' && can('sales') ? api.listDocuments(['credit_note']) : []]);
   const month = riyadhToday().slice(0, 7), posted = docs.filter(d => d.status === 'posted');
@@ -1372,14 +1424,11 @@ async function dashboardView() {
   const cash = tb.filter(r => ['1101', '1102', '1103'].includes(r.code)).reduce((a, r) => a + Number(r.balance), 0);
   const W = {
     approvals: pend, quick, calendar: cal, insights: ins, top, projects: projs,
-    kpis: `<div class="grid g4" style="margin-bottom:24px">
-      <div class="card stat"><div class="label">مبيعات هذا الشهر <span class="xs">(قبل الضريبة)</span></div><div class="val num">${money(sales)}</div><div class="xs muted">${mDocs.length} فاتورة${mCn.length ? ` · بعد ${mCn.length} إشعار دائن` : ''}</div></div>
-      <div class="card stat"><div class="label">ضريبة المخرجات هذا الشهر</div><div class="val num">${money(vat)}</div><div class="xs muted">تُورَّد في الإقرار الضريبي</div></div>
-      <div class="card stat"><div class="label">مستحق من العملاء</div><div class="val num">${money(open)}</div><div class="xs ${overdue.length ? 'down' : 'muted'}">${overdue.length ? overdue.length + ' فاتورة متأخرة' : 'لا يوجد متأخر'}</div></div>
-      <div class="card stat"><div class="label">النقدية والبنك</div><div class="val num">${money(cash)}</div><div class="xs muted">الصندوق + البنك + الشبكة</div></div></div>`,
+    kpis: want('kpis') ? await dashKpis({ sales, vat, open, overdue, cash, mDocs, docs: posted }).catch(() => '') : '',
     invoices: `<h2 style="margin-bottom:12px">آخر الفواتير</h2>
     ${docs.length ? invoiceTable(docs.slice(0, 6)) : empty('receipt', 'لا توجد فواتير بعد', 'ابدأ بإضافة عميل وصنف، ثم أصدر أول فاتورة — يُسجَّل قيدها في الحسابات تلقائياً.', `<div class="row" style="justify-content:center"><a class="btn secondary" href="#/customers">إضافة عميل</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>`)}`,
   };
+  if (location.hash !== h0) return;
   $('#main').innerHTML = `<div class="page-head"><h1>لوحة التحكم</h1><button class="btn ghost" id="dcust">${icon('gear')}تخصيص</button><a class="btn secondary" href="#/receipts/new">${icon('receipt')}سند قبض</a><a class="btn primary" href="#/invoices/new">${icon('plus')}فاتورة جديدة</a></div>
     ${D.order.filter(want).map(k => W[k] ? `<div class="dw" data-w="${k}">${W[k]}</div>` : '').join('') || empty('home', 'لوحة التحكم فارغة', 'أظهر الأقسام التي تريدها من «تخصيص».')}`;
   $('#dcust').onclick = dashCustomize;
@@ -1703,7 +1752,7 @@ async function trialBalanceView() {
 // ---------- settings ----------
 async function settingsView() {
   shell('settings', loading()); const o = ORG;
-  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1></div>
+  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a></div>
     <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate ${can('settings', 'create') ? '' : 'inert'}>
       <fieldset><legend>الشعار</legend><div class="row"><div class="logo-prev" id="lp">${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="الشعار الحالي">` : icon('box')}</div>
         <div><input type="file" id="logo" accept="image/png,image/jpeg,image/svg+xml" aria-describedby="lh"><p class="help" id="lh">PNG أو JPG، حتى 300 كيلوبايت. يظهر على الفواتير وأعلى القائمة.</p>${o.logo_path ? '<button type="button" class="btn ghost sm" id="rmlogo">إزالة الشعار</button>' : ''}</div></div></fieldset>
@@ -4132,11 +4181,24 @@ const THEME_DEFAULT = { mode: 'light', sidebar: 'dark', size: 'normal', density:
 const ACCENTS = [['#4f6b3a', 'زيتوني'], ['#2563a8', 'أزرق'], ['#13795b', 'زمردي'], ['#8a2c3b', 'عنابي'], ['#8a5a2b', 'بني'], ['#c2571a', 'برتقالي'], ['#5b4b9a', 'بنفسجي'], ['#3d4752', 'فحمي']];
 const DASH_WIDGETS = [['approvals', 'بانتظار اعتمادك'], ['kpis', 'المؤشرات الرئيسية'], ['quick', 'اختصارات سريعة'], ['calendar', 'التنبيهات والتقويم'], ['insights', 'الإيرادات والمصروفات'],
   ['projects', 'المشاريع النشطة'], ['top', 'أعلى أرصدة العملاء والموردين'], ['invoices', 'آخر الفواتير']];
-const DASH_DEFAULT = { order: DASH_WIDGETS.map(w => w[0]), hidden: ['quick'] };
+const DASH_DEFAULT = { order: DASH_WIDGETS.map(w => w[0]), hidden: ['quick'], kpis: ['sales_month', 'vat_month', 'ar_open', 'cash'] };
+// KPI cards anyone can pick: [key, label, module(s) needed]
+const KPIS = [['sales_month', 'مبيعات هذا الشهر', 'sales'], ['sales_today', 'مبيعات اليوم', 'sales'], ['vat_month', 'ضريبة المخرجات هذا الشهر', 'sales'], ['ar_open', 'مستحق من العملاء', 'sales'],
+  ['overdue', 'فواتير متأخرة السداد', 'sales'], ['ap_open', 'مستحق للموردين', 'purchases'], ['cash', 'النقدية والبنك', 'accounting|reports'], ['profit_month', 'صافي ربح هذا الشهر', 'accounting|reports'],
+  ['margin_month', 'هامش الربح هذا الشهر', 'accounting|reports'], ['expenses_month', 'مصروفات هذا الشهر', 'accounting|reports'], ['stock_value', 'قيمة المخزون', 'inventory'], ['neg_stock', 'أصناف رصيدها سالب', 'inventory'],
+  ['projects_active', 'مشاريع نشطة', 'accounting|manufacturing'], ['projects_late', 'مشاريع متأخرة عن التسليم', 'accounting|manufacturing'], ['tasks_late', 'مهام متأخرة', '']];
+const kpiAllowed = k => { const m = KPIS.find(x => x[0] === k)?.[2]; return m === '' || (m && m.split('|').some(x => can(x))); };
+// a sensible default per role when neither the user nor the company set one
+const smartDash = () => { const fin = can('sales') || can('accounting') || can('reports');
+  if (fin) return DASH_DEFAULT;
+  if (can('manufacturing') || can('inventory')) return { order: ['quick', 'projects', 'kpis', 'calendar', 'approvals', 'insights', 'top', 'invoices'], hidden: ['insights', 'top', 'invoices'], kpis: ['projects_active', 'projects_late', 'tasks_late', 'stock_value'] };
+  return { order: ['quick', 'calendar', 'kpis', 'approvals', 'projects', 'insights', 'top', 'invoices'], hidden: ['insights', 'top', 'invoices', 'projects'], kpis: ['tasks_late'] }; };
 let UI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || 'null') || {}; } catch { return {}; } })();
 const uiTheme = () => ({ ...THEME_DEFAULT, ...(UI.theme || {}) });
-const uiDash = () => { const d = { ...DASH_DEFAULT, ...(UI.dash || {}) }; const known = DASH_WIDGETS.map(w => w[0]);
-  return { order: [...d.order.filter(k => known.includes(k)), ...known.filter(k => !d.order.includes(k))], hidden: d.hidden.filter(k => known.includes(k)) }; };
+const dashSource = () => UI.dash ? 'mine' : ORG?.role_dashboard ? 'role' : 'default';
+const uiDash = () => { const base = UI.dash || ORG?.role_dashboard || smartDash(), d = { ...DASH_DEFAULT, ...base }, known = DASH_WIDGETS.map(w => w[0]);
+  return { order: [...d.order.filter(k => known.includes(k)), ...known.filter(k => !d.order.includes(k))], hidden: (d.hidden || []).filter(k => known.includes(k)),
+    kpis: (d.kpis || DASH_DEFAULT.kpis).filter(k => KPIS.some(x => x[0] === k)).slice(0, 8) }; };
 async function saveUI(patch) { UI = { ...UI, ...patch }; try { localStorage.setItem(UI_KEY, JSON.stringify(UI)); } catch { /* private mode */ }
   if (api.mode === 'supabase') try { await api.client.auth.updateUser({ data: { ui_prefs: UI } }); } catch { /* offline: kept locally */ } }
 async function loadUI() { if (api.mode !== 'supabase') return; try { const u = (await api.client.auth.getUser()).data.user, p = u?.user_metadata?.ui_prefs;
@@ -4209,16 +4271,27 @@ async function appearanceView() {
 
 // ---------- dashboard customization ----------
 function dashCustomize() {
-  let d = uiDash(); const N = Object.fromEntries(DASH_WIDGETS);
-  const f = drawer('تخصيص لوحة التحكم', `<p class="muted">اختر الأقسام التي تظهر لك ورتّبها. يُحفظ على حسابك.</p><ol class="dash-cfg" id="dcfg"></ol>
-    <button type="button" class="btn ghost sm" id="dreset">الترتيب الافتراضي</button>`, async () => { await saveUI({ dash: d }); toast('حُفظت لوحة التحكم'); dashboardView(); }, 'حفظ');
+  let d = uiDash(); const N = Object.fromEntries(DASH_WIDGETS), src = dashSource();
+  const canRoles = api.mode === 'supabase' && can('users', 'create');
+  const f = drawer('تخصيص لوحة التحكم', `<p class="muted">اختر الأقسام التي تظهر لك ورتّبها. يُحفظ على حسابك.${src === 'role' ? ' <span class="chip">تعرض الآن الافتراضي لدورك</span>' : ''}</p><ol class="dash-cfg" id="dcfg"></ol>
+    <fieldset><legend>بطاقات المؤشرات (حتى 8)</legend><div class="wpick" id="kcfg">${KPIS.filter(k => kpiAllowed(k[0])).map(([k, t]) => `<label class="row" style="gap:6px"><input type="checkbox" value="${k}" ${d.kpis.includes(k) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></fieldset>
+    <div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="dreset">${ORG?.role_dashboard ? 'افتراضي دوري' : 'الترتيب الافتراضي'}</button></div>
+    ${canRoles ? `<fieldset><legend>لوحة افتراضية لدور</legend><p class="xs muted">اجعل هذا الترتيب الافتراضي لكل من في الدور (مثل المحاسب أو مشرف الورشة) — ومن خصّص لوحته يبقى على تخصيصه.</p>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><select class="input" id="drole" style="height:38px;width:auto" aria-label="الدور"><option value="">— اختر الدور —</option></select><button type="button" class="btn secondary sm" id="drsave">حفظ للدور</button><button type="button" class="btn ghost sm" id="drclear">إزالة افتراضي الدور</button></div></fieldset>` : ''}`,
+    async () => { await saveUI({ dash: d }); toast('حُفظت لوحة التحكم'); dashboardView(); }, 'حفظ لي');
+  $('#kcfg', f).addEventListener('change', e => { const v = e.target.value; if (e.target.checked) { if (d.kpis.length >= 8) { e.target.checked = false; return toast('حتى 8 بطاقات', 'warn'); } d.kpis = [...d.kpis, v]; } else d.kpis = d.kpis.filter(k => k !== v); });
+  if (canRoles) { api.listRoles().then(rs => { $('#drole', f).insertAdjacentHTML('beforeend', rs.map(r => `<option value="${esc(r.id)}">${esc(r.name)}${r.dashboard ? ' ✓' : ''}</option>`).join('')); }).catch(() => {});
+    const roleAct = async dash => { const r = $('#drole', f).value; if (!r) return toast('اختر الدور', 'warn'); try { await api.setRoleDashboard(r, dash); toast(dash ? 'حُفظت لوحة الدور' : 'أُزيل افتراضي الدور'); } catch (x) { fail(x); } };
+    $('#drsave', f).onclick = () => roleAct(d); $('#drclear', f).onclick = () => roleAct(null); }
   const draw = () => { $('#dcfg', f).innerHTML = d.order.map((k, i) => `<li data-k="${k}"><label class="row" style="gap:8px;flex:1"><input type="checkbox" ${d.hidden.includes(k) ? '' : 'checked'} aria-label="إظهار ${esc(N[k])}"> ${esc(N[k])}</label>
     <button type="button" class="btn ghost icon sm" data-up ${i ? '' : 'disabled'} aria-label="أعلى">▲</button><button type="button" class="btn ghost icon sm" data-dn ${i < d.order.length - 1 ? '' : 'disabled'} aria-label="أسفل">▼</button></li>`).join(''); };
   $('#dcfg', f).addEventListener('click', e => { const li = e.target.closest('li'); if (!li) return; const i = d.order.indexOf(li.dataset.k);
     if (e.target.closest('[data-up]') && i > 0) { [d.order[i - 1], d.order[i]] = [d.order[i], d.order[i - 1]]; draw(); }
     if (e.target.closest('[data-dn]') && i < d.order.length - 1) { [d.order[i + 1], d.order[i]] = [d.order[i], d.order[i + 1]]; draw(); } });
   $('#dcfg', f).addEventListener('change', e => { const li = e.target.closest('li'); if (!li) return; const k = li.dataset.k; d.hidden = e.target.checked ? d.hidden.filter(x => x !== k) : [...d.hidden, k]; });
-  $('#dreset', f).onclick = () => { d = { order: [...DASH_DEFAULT.order], hidden: [...DASH_DEFAULT.hidden] }; draw(); };
+  $('#dreset', f).onclick = async () => { const { dash, ...rest } = UI; UI = rest; try { localStorage.setItem(UI_KEY, JSON.stringify(UI)); } catch { /* */ }
+    if (api.mode === 'supabase') try { await api.client.auth.updateUser({ data: { ui_prefs: UI } }); } catch { /* */ }
+    f.closest('.drawer-bg').remove(); toast('استُعيدت اللوحة الافتراضية'); dashboardView(); };
   draw();
 }
 async function dashQuick() {
@@ -4240,7 +4313,129 @@ async function dashProjects() {
         <td>${t.length ? `<div class="bar"><i style="width:${(done / t.length * 100).toFixed(0)}%"></i></div><span class="xs muted num">${done}/${t.length}</span>` : '<span class="xs muted">—</span>'}</td><td class="amt num ${pr < 0 ? 'down' : ''}">${money(pr)}</td></tr>`; }).join('')}</tbody></table></div></section>`;
 }
 
+async function dashKpis(c) {
+  const ks = uiDash().kpis.filter(kpiAllowed); if (!ks.length) return '';
+  const need = k => ks.includes(k), today = riyadhToday(), srv = api.mode === 'supabase';
+  const [ms, ap, items, ccs, ts] = await Promise.all([srv && ks.some(k => ['profit_month', 'margin_month', 'expenses_month'].includes(k)) ? api.monthlySummary(1).catch(() => []) : [],
+    srv && need('ap_open') ? api.openDocuments(['purchase_bill']).catch(() => []) : [], ks.some(k => ['stock_value', 'neg_stock'].includes(k)) ? api.listItems().catch(() => []) : [],
+    srv && ks.some(k => k.startsWith('projects')) ? api.listCostCenters().catch(() => []) : [], srv && need('tasks_late') ? api.listTasks().catch(() => []) : []]);
+  const m = ms.at(-1) || { revenue: 0, cogs: 0, expenses: 0 }, net = m.revenue - m.cogs - m.expenses, st = items.filter(i => i.track_stock), pj = ccs.filter(x => x.status === 'active' && x.project_type !== 'internal');
+  const V = { sales_month: [money(c.sales), `${c.mDocs.length} فاتورة`], sales_today: [money(c.docs.filter(d => d.issue_date === today).reduce((a, d) => a + d.subtotal, 0)), 'قبل الضريبة'],
+    vat_month: [money(c.vat), 'تُورَّد في الإقرار الضريبي'], ar_open: [money(c.open), c.overdue.length ? `${c.overdue.length} فاتورة متأخرة` : 'لا يوجد متأخر', c.overdue.length ? 'down' : ''],
+    overdue: [String(c.overdue.length), money(c.overdue.reduce((a, d) => a + d.total - d.amount_paid, 0)) + ' ر.س', c.overdue.length ? 'down' : ''], ap_open: [money(ap.reduce((a, d) => a + d.open, 0)), `${ap.length} فاتورة مفتوحة`],
+    cash: [money(c.cash), 'الصندوق + البنك + الشبكة'], profit_month: [money(net), 'الإيرادات − التكاليف', net < 0 ? 'down' : ''], margin_month: [m.revenue ? (net / m.revenue * 100).toFixed(1) + '%' : '—', 'صافي الربح ÷ الإيرادات'],
+    expenses_month: [money(m.expenses), 'غير تكلفة المبيعات'], stock_value: [money(st.reduce((a, i) => a + Number(i.on_hand) * Number(i.avg_cost), 0)), 'بمتوسط التكلفة'],
+    neg_stock: [String(st.filter(i => i.on_hand < 0).length), 'تحتاج جرداً أو فاتورة شراء', st.some(i => i.on_hand < 0) ? 'down' : ''], projects_active: [String(pj.length), 'لعملاء وإنتاج'],
+    projects_late: [String(pj.filter(x => x.due_date && x.due_date < today).length), 'تجاوزت تاريخ التسليم', pj.some(x => x.due_date && x.due_date < today) ? 'down' : ''],
+    tasks_late: [String(ts.filter(t => t.status !== 'done' && t.due_date && t.due_date < today).length), 'لم تُنجز في موعدها'] };
+  const L = Object.fromEntries(KPIS.map(k => [k[0], k[1]]));
+  return `<div class="grid g4" style="margin-bottom:24px">${ks.map(k => `<div class="card stat" data-kpi="${k}"><div class="label">${esc(L[k])}</div><div class="val num ${V[k][2] || ''}">${V[k][0]}</div><div class="xs muted">${V[k][1]}</div></div>`).join('')}</div>`;
+}
+
 const THEME_ROUTES = [[/^#\/appearance$/, appearanceView]];
+
+// =====================================================================
+// Printed-invoice design (templates, colors, logo, stamp, signature, bank
+// details, terms) and the workshop display screen. Inserted after theme.js.
+// =====================================================================
+const INV_DEFAULT = { template: 'classic', color: 'brand', show_logo: true, logo_pos: 'start', show_stamp: true, show_signature: true, signer_name: '', signer_title: '', bank_name: '', iban: '', account_name: '', terms: '' };
+const invSet = () => ({ ...INV_DEFAULT, ...(ORG?.invoice_settings || {}) });
+
+// style every printed document (.paper) by the company's design
+function decoratePaper(el, s = invSet(), o = ORG) {
+  if (!o || el.dataset.deco === '1') return; el.dataset.deco = '1';
+  const brand = hex2rgb(o.brand_color) ? o.brand_color : '#4f6b3a', pa = s.color === 'black' ? '#111111' : brand;
+  el.classList.add('tpl-' + s.template); if (!s.show_logo) el.classList.add('nologo'); if (s.logo_pos === 'center') el.classList.add('logo-center');
+  el.style.setProperty('--pa', pa); el.style.setProperty('--pa-soft', mix(pa, '#ffffff', 0.88)); el.style.setProperty('--pa-on', contrast(pa, '#ffffff') >= 4.5 ? '#ffffff' : '#111111');
+  const bank = [s.bank_name && `<div>البنك: <b>${esc(s.bank_name)}</b></div>`, s.account_name && `<div>اسم الحساب: ${esc(s.account_name)}</div>`, s.iban && `<div>الآيبان: <span class="num" dir="ltr">${esc(s.iban)}</span></div>`].filter(Boolean).join('');
+  const stamp = s.show_stamp && o.stamp_path ? `<img class="p-stamp" src="${esc(o.stamp_path)}" alt="ختم ${esc(o.name_ar)}">` : '';
+  const sig = s.show_signature && (o.signature_path || s.signer_name) ? `<div class="p-sig">${o.signature_path ? `<img src="${esc(o.signature_path)}" alt="التوقيع">` : '<div style="height:40px"></div>'}<div class="p-sigline">${esc(s.signer_name || '')}${s.signer_title ? `<br><span>${esc(s.signer_title)}</span>` : ''}</div></div>` : '';
+  if (!bank && !s.terms && !stamp && !sig) return;
+  el.insertAdjacentHTML('beforeend', `<div class="paper-extra">${bank || s.terms ? `<div class="p-info">${bank ? `<div class="p-bank"><b>بيانات التحويل البنكي</b>${bank}</div>` : ''}${s.terms ? `<div class="p-terms"><b>الشروط والأحكام</b><div>${esc(s.terms).replace(/\n/g, '<br>')}</div></div>` : ''}</div>` : '<div></div>'}
+    ${stamp || sig ? `<div class="p-sign">${stamp}${sig}</div>` : ''}</div>`);
+}
+new MutationObserver(ms => { if (!ORG) return; for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.matches?.('.paper')) decoratePaper(n); n.querySelectorAll?.('.paper').forEach(p => decoratePaper(p)); } })
+  .observe(document.documentElement, { childList: true, subtree: true });
+
+const samplePaper = () => `<article class="paper" aria-label="معاينة الفاتورة"><div class="hd"><div>${ORG.logo_path ? `<img src="${esc(ORG.logo_path)}" alt="الشعار" style="max-height:56px;max-width:160px;display:block;margin-bottom:8px">` : ''}
+    <b style="font-size:18px">${esc(ORG.name_ar)}</b><br>${ORG.vat_number ? `الرقم الضريبي: <span class="num">${esc(ORG.vat_number)}</span><br>` : ''}${esc([ORG.street, ORG.city].filter(Boolean).join('، '))}</div>
+    <div style="text-align:end"><b style="font-size:18px">فاتورة ضريبية<br>Tax Invoice</b><br>رقم الفاتورة: <span class="num">INV-00025</span><br>التاريخ: <span class="num">${riyadhToday()}</span></div></div>
+  <p style="margin:0 0 12px"><b>العميل:</b> مؤسسة البر للرحلات — الرقم الضريبي <span class="num">311111111111113</span></p>
+  <table><thead><tr><th>#</th><th>الوصف</th><th>الكمية</th><th class="amt">السعر</th><th class="amt">الضريبة</th><th class="amt">الإجمالي</th></tr></thead><tbody>
+    <tr><td class="num">1</td><td>كرفان 8 متر كامل التجهيز</td><td class="num">1</td><td class="amt num">60,000.00</td><td class="amt num">9,000.00</td><td class="amt num">69,000.00</td></tr>
+    <tr><td class="num">2</td><td>تركيب ونقل</td><td class="num">1</td><td class="amt num">1,500.00</td><td class="amt num">225.00</td><td class="amt num">1,725.00</td></tr></tbody></table>
+  <div style="display:flex;justify-content:flex-end;margin-top:16px"><div style="width:min(300px,100%)"><div style="display:flex;justify-content:space-between">الإجمالي قبل الضريبة<span class="num">61,500.00</span></div>
+    <div style="display:flex;justify-content:space-between">ضريبة القيمة المضافة<span class="num">9,225.00</span></div><div class="p-total" style="display:flex;justify-content:space-between;font-weight:700;margin-top:6px;padding-top:6px">الإجمالي (ر.س)<span class="num">70,725.00</span></div></div></div>
+  ${ORG.invoice_footer ? `<p class="xs" style="margin-top:12px">${esc(ORG.invoice_footer)}</p>` : ''}</article>`;
+
+async function invoiceDesignView() {
+  shell('invoice-design', loading()); if (!can('settings', 'create')) { location.hash = '#/settings'; return; }
+  const s = invSet(); let stamp = ORG.stamp_path || null, sig = ORG.signature_path || null;
+  const T = [['classic', 'كلاسيكي', 'خطوط واضحة وترويسة بسيطة'], ['modern', 'عصري', 'ترويسة ملوّنة بلون الشركة'], ['minimal', 'هادئ', 'بدون إطار، خطوط خفيفة']];
+  const ck = (n, l, v) => `<label class="row" style="gap:8px"><input type="checkbox" name="${n}" ${v ? 'checked' : ''}> ${l}</label>`;
+  const img = (id, label, src, help) => `<div class="field"><span class="lbl">${label}</span><div class="row" style="gap:10px;align-items:center"><div class="logo-prev" id="${id}p">${src ? `<img src="${esc(src)}" alt="${label}">` : icon('file')}</div>
+    <div><input type="file" id="${id}" accept="image/png,image/jpeg,image/svg+xml" aria-label="${label}"><p class="help">${help}</p>${src ? `<button type="button" class="btn ghost sm" id="${id}x">إزالة</button>` : ''}</div></div></div>`;
+  $('#main').innerHTML = `<a class="crumb" href="#/settings">${icon('chev')} الإعدادات</a><div class="page-head"><h1>تصميم الفاتورة المطبوعة</h1></div>
+    <p class="muted" style="margin:-8px 0 16px">يطبَّق على كل المستندات المطبوعة: الفواتير، عروض الأسعار، سندات التسليم، الإشعارات وأوامر الشراء.</p>
+    <div class="grid g2" style="align-items:start;grid-template-columns:minmax(300px,420px) 1fr"><form class="card grid" id="idf" style="gap:16px" novalidate>
+      <div class="field"><span class="lbl">القالب</span><div class="ptype-pick">${T.map(([k, t, d]) => `<label class="ptype ${s.template === k ? 'on' : ''}"><input type="radio" name="template" value="${k}" ${s.template === k ? 'checked' : ''}><b>${t}</b><span class="xs muted">${d}</span></label>`).join('')}</div></div>
+      <div class="field"><span class="lbl">لون الفاتورة</span><div class="seg">${[['brand', 'لون الشركة'], ['black', 'أسود']].map(([k, t]) => `<label class="${s.color === k ? 'on' : ''}"><input type="radio" name="color" value="${k}" ${s.color === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
+        <span class="help">لون الشركة يُغيَّر من «المظهر ← لون الشركة الافتراضي».</span></div>
+      <fieldset><legend>الشعار</legend>${ck('show_logo', 'إظهار الشعار', s.show_logo)}<div class="seg" style="margin-top:6px">${[['start', 'في الجانب'], ['center', 'في المنتصف']].map(([k, t]) => `<label class="${s.logo_pos === k ? 'on' : ''}"><input type="radio" name="logo_pos" value="${k}" ${s.logo_pos === k ? 'checked' : ''}>${t}</label>`).join('')}</div>
+        ${!ORG.logo_path ? '<p class="help">لم يُرفع شعار بعد — ارفعه من <a href="#/settings">الإعدادات</a>.</p>' : ''}</fieldset>
+      <fieldset><legend>الختم والتوقيع</legend>${ck('show_stamp', 'إظهار الختم', s.show_stamp)}${img('stampf', 'صورة الختم', stamp, 'PNG بخلفية شفافة يفضَّل، حتى 300 كيلوبايت')}
+        ${ck('show_signature', 'إظهار التوقيع', s.show_signature)}${img('sigf', 'صورة التوقيع', sig, 'وقّع على ورقة بيضاء وصوّرها، أو ارفع PNG شفاف')}
+        <div class="form-grid">${field('signer_name', 'اسم المفوَّض بالتوقيع', { value: s.signer_name })}${field('signer_title', 'المسمى', { value: s.signer_title, help: 'مثل: المدير العام' })}</div></fieldset>
+      <fieldset><legend>بيانات التحويل البنكي</legend><div class="form-grid">${field('bank_name', 'البنك', { value: s.bank_name, help: 'مثل: مصرف الراجحي' })}${field('account_name', 'اسم الحساب', { value: s.account_name })}</div>
+        ${field('iban', 'الآيبان', { value: s.iban, attrs: 'dir="ltr" maxlength="34" placeholder="SA…"' })}</fieldset>
+      <div class="field"><label for="f-terms">الشروط والأحكام</label><textarea class="input" id="f-terms" name="terms" rows="4" style="height:auto;padding:8px 12px" placeholder="مثل: الدفعة المقدمة 50% غير مستردة — مدة التنفيذ 30 يوماً من تاريخ الاعتماد — الضمان سنة على الهيكل">${esc(s.terms)}</textarea></div>
+      <p class="help err" id="iderr" role="alert"></p><div class="row" style="justify-content:flex-end"><button class="btn primary" type="submit">حفظ التصميم</button></div></form>
+      <section aria-label="معاينة"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="margin:0">معاينة</h3><span class="xs muted">تتحدث مع كل تغيير</span></div><div id="idprev"></div></section></div>`;
+  const collect = () => { const f = new FormData($('#idf')); return { template: f.get('template'), color: f.get('color'), logo_pos: f.get('logo_pos'), show_logo: !!f.get('show_logo'), show_stamp: !!f.get('show_stamp'), show_signature: !!f.get('show_signature'),
+    signer_name: (f.get('signer_name') || '').trim(), signer_title: (f.get('signer_title') || '').trim(), bank_name: (f.get('bank_name') || '').trim(), account_name: (f.get('account_name') || '').trim(), iban: toLatin(f.get('iban') || '').replace(/\s/g, '').toUpperCase(), terms: (f.get('terms') || '').trim() }; };
+  const prev = () => { $$('#idf .ptype, #idf .seg label').forEach(l => l.classList.toggle('on', !!$('input', l)?.checked)); $('#idprev').innerHTML = samplePaper(); const p = $('#idprev .paper'); p.dataset.deco = ''; decoratePaper(p, collect(), { ...ORG, stamp_path: stamp, signature_path: sig }); };
+  $('#idf').addEventListener('input', prev); $('#idf').addEventListener('change', prev);
+  const upload = (id, set) => { $('#' + id).onchange = e => { const file = e.target.files[0]; if (!file) return; if (file.size > 300 * 1024) { toast('الملف أكبر من 300 كيلوبايت', 'bad'); e.target.value = ''; return; }
+    const r = new FileReader(); r.onload = () => { set(r.result); $('#' + id + 'p').innerHTML = `<img src="${esc(r.result)}" alt="">`; prev(); }; r.readAsDataURL(file); };
+    if ($('#' + id + 'x')) $('#' + id + 'x').onclick = () => { set(null); $('#' + id + 'p').innerHTML = icon('file'); prev(); }; };
+  upload('stampf', v => stamp = v); upload('sigf', v => sig = v);
+  $('#idf').onsubmit = async e => { e.preventDefault(); const v = collect(); $('#iderr').textContent = '';
+    if (v.iban && !/^SA\d{22}$/.test(v.iban)) return $('#iderr').textContent = 'الآيبان السعودي يبدأ بـ SA ويتكون من 24 خانة';
+    $('[type=submit]', e.target).disabled = true;
+    try { ORG = await api.updateOrg({ invoice_settings: v, stamp_path: stamp, signature_path: sig }); toast('حُفظ تصميم الفاتورة'); } catch (x) { $('#iderr').textContent = x.message; } finally { $('[type=submit]', e.target).disabled = false; } };
+  prev();
+}
+
+// ---------- workshop display (TV) ----------
+let DISPLAY_TIMER = null;
+async function displayView() {
+  clearInterval(DISPLAY_TIMER);
+  const draw = async () => {
+    if (!location.hash.startsWith('#/display')) { clearInterval(DISPLAY_TIMER); return; }
+    const today = riyadhToday(), [ts, ccs, ws] = await Promise.all([api.listTasks().catch(() => []), api.listCostCenters().catch(() => []), api.listWorkers().catch(() => [])]);
+    const W = Object.fromEntries(ws.map(w => [w.id, w.full_name])), C = Object.fromEntries(ccs.map(c => [c.id, c]));
+    const open = ts.filter(t => t.status !== 'done' && !C[t.cost_center_id]?.is_template), late = open.filter(t => t.due_date && t.due_date < today), now = open.filter(t => !late.includes(t) && (t.status === 'doing' || (t.start_date && t.start_date <= today) || t.due_date === today));
+    const pj = ccs.filter(c => c.status === 'active' && c.project_type !== 'internal');
+    const prog = c => { const t = ts.filter(x => x.cost_center_id === c.id); return t.length ? Math.round(t.filter(x => x.status === 'done').length / t.length * 100) : 0; };
+    const task = (t, cls) => `<li class="${cls}"><b>${esc(t.title)}</b><span>${esc(C[t.cost_center_id]?.name || '')}</span><span class="w">${esc((t.employee_ids || []).map(e => W[e]).filter(Boolean).join('، ') || '—')}</span>${t.due_date ? `<span class="d num">${esc(t.due_date)}</span>` : ''}</li>`;
+    let hijri = ''; try { hijri = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); } catch { hijri = ''; }
+    $('#app').innerHTML = `<div class="tv"><header><div class="row" style="gap:14px;align-items:center">${ORG?.logo_path ? `<img src="${esc(ORG.logo_path)}" alt="">` : ''}<h1>${esc(ORG?.name_ar || '')} — لوحة الورشة</h1></div>
+        <div class="tv-clock"><b class="num" id="tvclock"></b><span>${esc(hijri)} · <span class="num">${today}</span></span></div>
+        <div class="tv-ctl"><button class="btn secondary sm" id="tvfull">ملء الشاشة</button><a class="btn ghost sm" href="#/dashboard">خروج</a></div></header>
+      <main class="tv-grid"><section><h2>المهام <span class="num">${now.length + late.length}</span></h2><ul class="tv-tasks">${late.map(t => task(t, 'late')).join('')}${now.map(t => task(t, t.status === 'doing' ? 'doing' : '')).join('') || (late.length ? '' : '<li class="empty">لا توجد مهام لليوم ✓</li>')}</ul></section>
+        <section><h2>المشاريع <span class="num">${pj.length}</span></h2><ul class="tv-proj">${pj.map(c => { const p = prog(c), d = c.due_date ? daysTo(c.due_date) : null; return `<li><div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span class="num ${d != null && d < 0 ? 'late' : ''}">${d == null ? '' : d < 0 ? `متأخر ${-d} يوم` : `باقي ${d} يوم`}</span></div>
+          <div class="tv-bar"><i style="width:${p}%"></i></div><span class="num">${p}%</span></li>`; }).join('') || '<li class="empty">لا توجد مشاريع نشطة</li>'}</ul></section></main>
+      <footer>يتحدث تلقائياً كل دقيقة · آخر تحديث <span class="num">${new Date().toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</span></footer></div>`;
+    const tick = () => { const el = $('#tvclock'); if (el) el.textContent = new Date().toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' }); }; tick();
+    $('#tvfull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => toast('المتصفح لا يسمح بملء الشاشة', 'warn'));
+  };
+  await draw(); DISPLAY_TIMER = setInterval(() => draw().catch(() => {}), 60000);
+}
+
+const DESIGN_ROUTES = [
+  [/^#\/invoice-design$/, gate('invoice-design', 'تصميم الفاتورة', 'settings', invoiceDesignView)],
+  [/^#\/display$/, gate('display', 'لوحة الورشة', 'accounting|manufacturing|hr|inventory', displayView)],
+];
 
 
 // ---------- router ----------
@@ -4260,6 +4455,7 @@ const ROUTES = [
   ...EXT3_ROUTES,
   ...PROJECT_ROUTES,
   ...THEME_ROUTES,
+  ...DESIGN_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';

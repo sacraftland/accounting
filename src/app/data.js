@@ -271,7 +271,8 @@ const SupabaseAPI = (cfg) => {
     const pick = m.find(x => x.org_id === localStorage.getItem('daftar-org')) || m[0];
     const org = ok(await sb.from('orgs').select('*').eq('id', pick.org_id).single());
     const perms = ok(await sb.rpc('my_permissions', { p_org: pick.org_id })) || {};
-    return { ...org, my_role: pick.role, perms, org_count: m.length }; }
+    const role_dashboard = pick.role === 'owner' ? null : await sb.rpc('my_role_dashboard', { p_org: pick.org_id }).then(r => r.error ? null : r.data).catch(() => null);
+    return { ...org, my_role: pick.role, perms, org_count: m.length, role_dashboard }; }
   const acctId = async k => ok(await sb.from('accounts').select('id').eq('org_id', await orgId()).eq('system_key', k).single()).id;
   const nulls = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === '' ? null : v]));
   return {
@@ -302,9 +303,10 @@ const SupabaseAPI = (cfg) => {
         p_building: f.building_no || null, p_postal: f.postal_code || null, p_district: f.district || null, p_sector: f.sector || 'general' })); orgCache = null; return { id }; },
     async updateOrg(f) {
       if (f.vat_number && !VAT_RE.test(f.vat_number)) throw new AppError('الرقم الضريبي 15 خانة ويبدأ وينتهي بالرقم 3');
-      const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer', 'allow_negative_stock'];
+      const allowed = ['name_ar', 'name_en', 'vat_number', 'cr_number', 'street', 'building_no', 'district', 'city', 'postal_code', 'sector', 'logo_path', 'brand_color', 'invoice_footer', 'allow_negative_stock', 'invoice_settings', 'stamp_path', 'signature_path'];
       const row = nulls(Object.fromEntries(Object.entries(f).filter(([k]) => allowed.includes(k))));
-      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role, perms: orgCache?.perms, org_count: orgCache?.org_count }; return orgCache; },
+      const r = ok(await sb.from('orgs').update(row).eq('id', await orgId()).select().single()); orgCache = { ...r, my_role: orgCache?.my_role, perms: orgCache?.perms, org_count: orgCache?.org_count, role_dashboard: orgCache?.role_dashboard }; return orgCache; },
+    async setRoleDashboard(role, dash) { ok(await sb.rpc('set_role_dashboard', { p_role: role, p_dash: dash })); },
     // ---- users & invitations (owner / admin) ----
     async whoami() { return ok(await sb.rpc('whoami')); },
     async listMembers() { return ok(await sb.rpc('list_members', { p_org: await orgId() })); },

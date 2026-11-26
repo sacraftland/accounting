@@ -217,6 +217,34 @@ with sync_playwright() as p:
     check('dashboard layout kept after reload', pg.evaluate("[...document.querySelectorAll('#main .dw')].map(x => x.dataset.w)") == order1)
     pg.screenshot(path=str(SHOTS / 'proj-dashboard-custom.png'), full_page=True)
 
+    # ---------- invoice design ----------
+    import base64 as _b
+    go('#/invoice-design', 1500)
+    check('invoice design page with live preview', pg.locator('#idprev .paper').count() == 1)
+    pg.click('#idf .ptype:has(input[value=modern])'); pg.fill('#f-bank_name', 'مصرف الراجحي'); pg.fill('#f-iban', 'SA0380000000608010167519'); pg.fill('#f-signer_name', 'علي'); pg.fill('#f-terms', 'الدفعة المقدمة 50%')
+    pg.set_input_files('#stampf', files=[{'name': 's.png', 'mimeType': 'image/png', 'buffer': _b.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNg+M/A8B8ABQACAeKysLgAAAAASUVORK5CYII=')}]); pg.wait_for_timeout(600)
+    check('preview follows the template, bank details, stamp', 'tpl-modern' in pg.get_attribute('#idprev .paper', 'class') and 'SA0380000000608010167519' in pg.inner_text('#idprev .paper') and pg.locator('#idprev .p-stamp').count() == 1)
+    pg.click('#idf [type=submit]'); pg.wait_for_timeout(1500)
+    check('invoice design saved', one("select invoice_settings->>'template' || ':' || (stamp_path is not null) from orgs") == 'modern:true', pg.inner_text('#iderr'))
+    pg.screenshot(path=str(SHOTS / 'proj-invoice-design.png'), full_page=True)
+
+    # ---------- KPI picker & role dashboard ----------
+    go('#/dashboard', 1800); pg.click('#dcust'); pg.wait_for_timeout(400)
+    for k in ['sales_month', 'vat_month', 'ar_open', 'cash']:
+        if pg.locator(f'#kcfg input[value={k}]').count(): pg.locator(f'#kcfg input[value={k}]').uncheck()
+    pg.locator('#kcfg input[value=projects_active]').check(); pg.locator('#kcfg input[value=tasks_late]').check(); pg.locator('#kcfg input[value=stock_value]').check()
+    rid = one("select id from roles order by created_at limit 1"); pg.select_option('#drole', rid); pg.click('#drsave'); pg.wait_for_timeout(1200)
+    check('dashboard saved as a role default', one(f"select dashboard->'kpis' ? 'tasks_late' from roles where id='{rid}'") == 't')
+    submit(1800)
+    check('chosen KPI cards shown', pg.locator('#main [data-kpi]').count() == 3 and pg.locator('#main [data-kpi=projects_active]').count() == 1 and '4' in pg.inner_text('#main [data-kpi=projects_active]'), pg.inner_text('#main')[:300])
+
+    # ---------- workshop display ----------
+    go('#/display', 2500)
+    tv = pg.inner_text('#app') if pg.locator('.tv').count() else ''
+    check('workshop display shows tasks and projects', 'لوحة الورشة' in tv and 'لحام الشاسيه' in tv and 'كرفان 8 متر' in tv, tv[:300])
+    pg.screenshot(path=str(SHOTS / 'proj-display.png'), full_page=True)
+    go('#/dashboard', 1200)
+
     check('books balance', one("select sum(debit) = sum(credit) from journal_lines") == 't')
     check('no page errors', not errs, ' | '.join(errs[:3]))
     b.close()
