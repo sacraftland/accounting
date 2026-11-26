@@ -183,6 +183,7 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/PORTAL_INVALID/i, 'الرابط غير صالح أو أُلغي'], [/TRIP_VAN/i, 'اختر سيارة المندوب'], [/TRIP_OPEN/i, 'لهذه السيارة رحلة مفتوحة — أغلقها أولاً'], [/TRIP_CLOSED/i, 'الرحلة مغلقة'],
   [/ASSET_HAS_DEPRECIATION/i, 'على الأصل إهلاك مرحّل — لا يمكن تعديل تكلفته أو حذفه، استبعده بدلاً من ذلك'], [/ASSET_DISPOSED/i, 'هذا الأصل مستبعد'],
   [/CARD_AMOUNTS/i, 'تحقق من مبلغ التسوية والعمولة'], [/LEAVE_DECIDED/i, 'تم البت في هذا الطلب مسبقاً'],
   [/ACCOUNT_SYSTEM/i, 'حسابات النظام لا تُحذف'], [/ACCOUNT_USED/i, 'الحساب عليه قيود أو حسابات فرعية'], [/ACCOUNT_PARENT/i, 'اختر حساباً رئيسياً (تجميعياً) كأب'],
@@ -411,6 +412,18 @@ const SupabaseAPI = (cfg) => {
     async postManualEntry(date, memo, lines) { return ok(await sb.rpc('post_manual_entry', { p_org: await orgId(), p_date: date, p_memo: memo, p_lines: lines })); },
     async reverseEntry(id, date) { return ok(await sb.rpc('reverse_entry', { e: id, on_date: date })); },
     // ---------- warehouses & stock ----------
+    // ---- customer portal & van trips ----
+    async createPortalLink(party) { return ok(await sb.rpc('create_portal_link', { p_party: party })); },
+    async revokePortalLink(party) { ok(await sb.rpc('revoke_portal_link', { p_party: party })); },
+    async portalView(tok) { const r = ok(await sb.rpc('portal_view', { p_token: tok })); return { ...r, balance: Number(r.balance), documents: r.documents.map(d => ({ ...d, total: Number(d.total), amount_paid: Number(d.amount_paid), subtotal: Number(d.subtotal), vat_total: Number(d.vat_total) })), payments: r.payments.map(y => ({ ...y, amount: Number(y.amount) })) }; },
+    async portalDocument(tok, id) { const d = ok(await sb.rpc('portal_document', { p_token: tok, p_doc: id })); return { ...d, total: Number(d.total), amount_paid: Number(d.amount_paid), subtotal: Number(d.subtotal), vat_total: Number(d.vat_total) }; },
+    async listTrips() { return ok(await sb.from('van_trips').select('*').eq('org_id', await orgId()).order('opened_at', { ascending: false })).map(t => ({ ...t, cash_handed: t.cash_handed == null ? null : Number(t.cash_handed) })); },
+    async openTrip(van, source, emp, driver, date, route) { return ok(await sb.rpc('open_trip', { p_org: await orgId(), p_van: van, p_source: source, p_employee: emp, p_driver: driver || null, p_date: date, p_route: route || null })); },
+    async closeTrip(id, cash, notes) { ok(await sb.rpc('close_trip', { p_trip: id, p_cash: cash, p_notes: notes || null })); },
+    async tripData(t) { const o = await orgId(), inWin = x => x.posted_at && x.posted_at >= t.opened_at && (!t.closed_at || x.posted_at <= t.closed_at);
+      const [st, docs] = await Promise.all([sb.from('stock_docs').select('id,kind,from_warehouse_id,to_warehouse_id,posted_at,stock_doc_lines(item_id,qty)').eq('org_id', o).eq('kind', 'transfer').eq('status', 'posted'),
+        sb.from('documents').select('id,kind,number,total,amount_paid,payment_status,posted_at,parties(name),document_lines(item_id,qty)').eq('org_id', o).eq('warehouse_id', t.van_warehouse_id).eq('status', 'posted').in('kind', ['tax_invoice', 'simplified_invoice', 'credit_note'])]);
+      return { stock: ok(st).filter(x => (x.from_warehouse_id === t.van_warehouse_id || x.to_warehouse_id === t.van_warehouse_id) && inWin(x)), docs: ok(docs).filter(inWin) }; },
     async listBranches() { return ok(await sb.from('branches').select('*').eq('org_id', await orgId()).order('created_at')); },
     async saveBranch(b) { const row = { ...b, org_id: await orgId() }; return b.id ? ok(await sb.from('branches').update(row).eq('id', b.id).select().single()) : ok(await sb.from('branches').insert(row).select().single()); },
     async listWarehouses() { return ok(await sb.from('warehouses').select('*').eq('org_id', await orgId()).order('created_at')); },

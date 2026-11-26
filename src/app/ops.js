@@ -432,7 +432,7 @@ async function warehousesView() {
   const brs = api.listBranches ? await api.listBranches().catch(() => []) : [];
   if (brs.length > 1) $$('#main thead th').forEach(th => { const w = whs.find(x => x.name === th.textContent); const b = w && brs.find(b => b.id === w.branch_id); if (b) th.insertAdjacentHTML('beforeend', `<div class="xs muted">${esc(b.name)}</div>`); });
   if ($('#neww')) $('#neww').onclick = () => drawer('مستودع جديد', `${field('name', 'اسم المستودع', { req: true, help: 'مثل: مستودع المواد الخام، الورشة، صالة العرض' })}
-      ${select('kind', 'النوع', [['general', 'عام'], ['raw', 'مواد خام'], ['finished', 'منتجات تامة'], ['site', 'موقع مشروع']], 'general')}
+      ${select('kind', 'النوع', [['general', 'عام'], ['raw', 'مواد خام'], ['finished', 'منتجات تامة'], ['site', 'موقع مشروع'], ['van', 'سيارة مندوب']], 'general')}
       ${brs.length > 1 ? select('branch_id', 'الفرع', brs.map(b => [b.id, b.name]), brs[0].id) : ''}`,
     async v => { if (!v.name?.trim()) throw new AppError('الاسم مطلوب'); await api.saveWarehouse({ name: v.name.trim(), kind: v.kind, ...(v.branch_id ? { branch_id: v.branch_id } : {}) }); toast('أُضيف المستودع'); warehousesView(); });
 }

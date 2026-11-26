@@ -90,7 +90,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['g', '', 'المشتريات', 'purchases'], ['bills', 'cart', 'فواتير المشتريات', 'purchases'], ['purchase-orders', 'cart', 'أوامر الشراء', 'purchases'], ['purchase-returns', 'cart', 'مرتجعات المشتريات', 'purchases'],
   ['payments', 'receipt', 'سندات الصرف', 'purchases'], ['suppliers', 'users', 'الموردون', 'purchases'],
   ['g', '', 'المصروفات', 'expenses'], ['expenses', 'receipt', 'المصروفات', 'expenses'], ['custody', 'receipt', 'الصندوق والعهد', 'expenses'],
-  ['g', '', 'المخزون والتصنيع', 'inventory|manufacturing'], ['items', 'box', 'الأصناف والخدمات', 'sales|purchases|inventory|manufacturing', 1], ['warehouses', 'box', 'المستودعات والأرصدة', 'inventory'], ['stock', 'box', 'حركات المخزون', 'inventory'],
+  ['g', '', 'المخزون والتصنيع', 'inventory|manufacturing'], ['items', 'box', 'الأصناف والخدمات', 'sales|purchases|inventory|manufacturing', 1], ['warehouses', 'box', 'المستودعات والأرصدة', 'inventory'], ['stock', 'box', 'حركات المخزون', 'inventory'], ['trips', 'cart', 'رحلات المندوبين', 'inventory|sales'],
   ['boms', 'box', 'قوائم المواد', 'manufacturing'], ['mfg', 'gear', 'أوامر التصنيع', 'manufacturing'],
   ['g', '', 'المالية', 'accounting|reports'], ['journal', 'book', 'القيود اليومية', 'accounting'], ['accounts', 'book', 'شجرة الحسابات', 'accounting', 1], ['trial-balance', 'chart', 'ميزان المراجعة', 'accounting|reports', 1],
   ['assets', 'box', 'الأصول الثابتة', 'accounting'],
@@ -453,13 +453,14 @@ async function customersView() {
 async function customerView(id) {
   shell('customers', loading()); const ps = await api.listParties(); const p = ps.find(x => x.id === id); if (!p) throw new AppError('العميل غير موجود');
   const rows = await api.partyStatement(id), bal = rows.at(-1)?.balance || 0;
-  $('#main').innerHTML = `<a class="crumb" href="#/customers">${icon('chev')} العملاء</a><div class="page-head"><h1>${esc(p.name)}</h1><button class="btn secondary" id="ed">تعديل</button>${p.phone && bal > 0 ? `<a class="btn secondary" target="_blank" rel="noopener" href="${waLink(p.phone, `السلام عليكم ${p.name}، نود تذكيركم بأن الرصيد المستحق لدى ${ORG.name_ar} هو ${money(bal)} ر.س. شاكرين تعاونكم.`)}">واتساب تذكير</a>` : ''}${p.email && bal > 0 ? `<a class="btn secondary" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('تذكير بالرصيد المستحق — ' + ORG.name_ar)}&body=${encodeURIComponent(`السلام عليكم ${p.name}،\nنود تذكيركم بأن الرصيد المستحق هو ${money(bal)} ر.س.\nشاكرين تعاونكم.`)}">بريد تذكير</a>` : ''}<a class="btn primary" href="#/receipts/new?party=${esc(p.id)}">${icon('receipt')}سند قبض</a></div>
+  $('#main').innerHTML = `<a class="crumb" href="#/customers">${icon('chev')} العملاء</a><div class="page-head"><h1>${esc(p.name)}</h1><button class="btn secondary" id="ed">تعديل</button>${p.phone && bal > 0 ? `<a class="btn secondary" target="_blank" rel="noopener" href="${waLink(p.phone, `السلام عليكم ${p.name}، نود تذكيركم بأن الرصيد المستحق لدى ${ORG.name_ar} هو ${money(bal)} ر.س. شاكرين تعاونكم.`)}">واتساب تذكير</a>` : ''}${p.email && bal > 0 ? `<a class="btn secondary" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('تذكير بالرصيد المستحق — ' + ORG.name_ar)}&body=${encodeURIComponent(`السلام عليكم ${p.name}،\nنود تذكيركم بأن الرصيد المستحق هو ${money(bal)} ر.س.\nشاكرين تعاونكم.`)}">بريد تذكير</a>` : ''}${api.mode === 'supabase' && can('sales', 'create') ? '<button class="btn secondary" id="portal">رابط بوابة العميل</button>' : ''}<a class="btn primary" href="#/receipts/new?party=${esc(p.id)}">${icon('receipt')}سند قبض</a></div>
     <div class="grid g3" style="margin-bottom:20px"><div class="card stat"><div class="label">الرصيد المستحق</div><div class="val num">${money(bal)}</div>${p.credit_limit != null ? `<div class="xs ${bal > p.credit_limit ? 'down' : 'muted'}">حد الائتمان ${money(p.credit_limit)}${bal > p.credit_limit ? ' — متجاوز!' : ` · متاح ${money(p.credit_limit - bal)}`}</div>` : ''}</div>
     <div class="card" style="grid-column:span 2"><dl class="kv"><dt>الرقم الضريبي</dt><dd class="num">${esc(p.vat_number || '—')}</dd><dt>العنوان</dt><dd>${esc([p.building_no, p.street, p.district, p.city, p.postal_code].filter(Boolean).join('، ') || '—')}</dd><dt>التواصل</dt><dd class="num">${esc([p.phone, p.email].filter(Boolean).join(' · ') || '—')}</dd></dl></div></div>
     <h2 style="margin-bottom:12px">كشف الحساب</h2>
     ${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>المستند</th><th>البيان</th><th class="amt">مدين</th><th class="amt">دائن</th><th class="amt">الرصيد</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td class="num">${esc(r.date)}</td><td class="num">${r.link ? `<a href="${esc(r.link)}">${esc(r.ref)}</a>` : esc(r.ref)}</td><td>${esc(r.what)}</td><td class="amt num">${r.debit ? money(r.debit) : ''}</td><td class="amt num">${r.credit ? money(r.credit) : ''}</td><td class="amt num">${money(r.balance)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد حركات بعد.</p>'}`;
   $('#ed').onclick = () => partyDrawer(p, () => { toast('تم الحفظ'); customerView(id); });
+  if ($('#portal')) $('#portal').onclick = () => portalShare(p);
 }
 
 // ---------- items ----------
@@ -645,11 +646,13 @@ const ROUTES = [
   ...REPORT_ROUTES,
   ...EXT_ROUTES,
   ...EXT2_ROUTES,
+  ...EXT3_ROUTES,
 ];
 async function route() {
   const h = location.hash || '#/dashboard';
   $$('.drawer-bg').forEach(x => x.remove());
   try {
+    const pm = h.match(PORTAL_RE); if (pm && api.mode === 'supabase') return portalPublicView(pm[1], pm[2]);
     const s = await api.session();
     if (!s) { recovering = false;
       if (h === '#/signup') return authView('signup'); if (h === '#/forgot' && api.mode === 'supabase') return forgotView();

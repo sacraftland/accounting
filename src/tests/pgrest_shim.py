@@ -26,6 +26,7 @@ def ident(s):
     return s
 
 def psql(sql, sub=None, role='authenticated'):
+    if not sub and role == 'authenticated': role = 'anon'
     claims = json.dumps({'sub': sub, 'role': role}) if sub else ''
     script = ('\\set ON_ERROR_STOP 1\n\\o /dev/null\nbegin;\n'
               + (f"set local role {role};\n" if role else '')
