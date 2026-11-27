@@ -560,6 +560,16 @@ details summary { cursor: pointer; margin-top: 8px; }
 .bk-cmds td { padding: 4px 8px; border-bottom: 1px solid var(--c-border); vertical-align: top; }
 .bk-cmds code { background: var(--c-surface-2); border-radius: 6px; padding: 2px 8px; white-space: nowrap; font-size: 12px; display: inline-block; }
 </style>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="كرافت لاند">
+<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }));
+}
+</script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
