@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#2f2a24">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%234f6b3a%22/%3E%3Cpath d=%22M9 8h11a3 3 0 0 1 3 3v13H12a3 3 0 0 1-3-3z%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22/%3E%3C/svg%3E">
 <title>كرافت لاند — النظام المحاسبي</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="كرافت لاند">
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }));</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -696,6 +702,8 @@ const VAT_RE = /^3[0-9]{13}3$/;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
 const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 const riyadhTime = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
+// VAT on the document = per rate, rounded once (ZATCA BR-S-09); lines keep their own rounded VAT for display
+const docVat = rows => { const g = {}; rows.forEach(([net, rate]) => { if (Number.isFinite(net)) g[rate] = (g[rate] || 0) + net; }); return Object.entries(g).reduce((t, [r, n]) => t + Math.round(n * Number(r) / 100), 0); };
 const lineCalc = l => { const gross = Math.round(Number(l.qty) * Number(l.unit_price)); const net = gross - (Number(l.discount) || 0); return { net, vat: Math.round(net * Number(l.vat_rate) / 100) }; };
 class AppError extends Error {}
 
@@ -817,7 +825,7 @@ const LocalAPI = (() => {
         if (d.kind === 'tax_invoice' && !party?.vat_number) throw new AppError('الفاتورة الضريبية تحتاج رقم ضريبي للعميل');
         const lines = S.lines.filter(l => l.document_id === id);
         if (!lines.length) throw new AppError('أضف سطراً واحداً على الأقل');
-        let sub = 0, vat = 0; lines.forEach(l => { const c = lineCalc(l); l.line_net = c.net; l.line_vat = c.vat; sub += c.net; vat += c.vat; });
+        let sub = 0; lines.forEach(l => { const c = lineCalc(l); l.line_net = c.net; l.line_vat = c.vat; sub += c.net; }); const vat = docVat(lines.map(l => [l.line_net, Number(l.vat_rate)]));
         if (sub <= 0) throw new AppError('إجمالي الفاتورة يجب أن يكون أكبر من صفر');
         Object.assign(d, { subtotal: sub, vat_total: vat, total: sub + vat });
         const rev = {}; lines.forEach(l => { const it = S.items.find(i => i.id === l.item_id); const a = it?.revenue_account_id || acct(it?.kind === 'service' ? 'service_revenue' : 'sales'); rev[a] = (rev[a] || 0) + l.line_net; });
@@ -1605,8 +1613,8 @@ async function invoiceEditView(id) {
       <td><button type="button" class="btn ghost icon sm" data-del aria-label="حذف السطر ${i + 1}">${icon('trash')}</button></td></tr>`).join('');
     totals();
   };
-  const totals = () => { let s = 0, v = 0; lines.forEach((l, i) => { const c = lineCalc(l); const ok = Number.isFinite(c.net); s += ok ? c.net : 0; v += ok ? c.vat : 0;
-      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(c.net + c.vat) : '—'; });
+  const totals = () => { let s = 0, v = 0; const vr = []; lines.forEach((l, i) => { const c = lineCalc(l); const ok = Number.isFinite(c.net); s += ok ? c.net : 0; if (ok) vr.push([c.net, Number(l.vat_rate)]);
+      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(c.net + c.vat) : '—'; }); v = docVat(vr);
     $('#tSub').textContent = money(s); $('#tVat').textContent = money(v); $('#tTot').textContent = money(s + v) + ' ر.س'; };
   const kindCheck = () => { const k = $('#f-kind').value, p = parties.find(x => x.id === $('#f-party').value), w = $('#kindwarn');
     let msg = ''; if (k === 'tax_invoice' && !p) msg = 'الفاتورة الضريبية تحتاج عميلاً مسجلاً ضريبياً. اختر عميلاً أو غيّر النوع إلى مبسطة.';
@@ -2035,8 +2043,8 @@ async function docEditView(key, id) {
   };
   const drawLc = () => { if (!$('#lcs')) return; $('#lcs').innerHTML = lc.map((x, i) => `<div class="row" data-c="${i}" style="margin-bottom:8px"><input class="input" data-ck="description" value="${esc(x.description)}" placeholder="مثل: شحن بحري، جمارك" aria-label="وصف التكلفة" style="flex:2">
     <input class="input num" data-ck="amount" inputmode="decimal" value="${x.amount ? esc(money(x.amount)) : ''}" placeholder="0.00" aria-label="المبلغ" style="flex:1"><button type="button" class="btn ghost icon sm" data-cdel aria-label="حذف التكلفة">${icon('trash')}</button></div>`).join(''); };
-  const totals = () => { let s = 0, v = 0; lines.forEach((l, i) => { const k = lineCalc(l); const ok = Number.isFinite(k.net); s += ok ? k.net : 0; v += ok ? k.vat : 0;
-      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(k.net + k.vat) : '—'; });
+  const totals = () => { let s = 0, v = 0; const vr = []; lines.forEach((l, i) => { const k = lineCalc(l); const ok = Number.isFinite(k.net); s += ok ? k.net : 0; if (ok) vr.push([k.net, Number(l.vat_rate)]);
+      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(k.net + k.vat) : '—'; }); v = docVat(vr);
     $('#tSub').textContent = money(s); $('#tVat').textContent = money(v); $('#tTot').textContent = money(s + v) + ' ر.س'; };
   $('#lines').addEventListener('input', e => { const tr = e.target.closest('tr'), k = e.target.dataset.k; if (!tr || !k) return; const l = lines[tr.dataset.i];
     if (k === 'qty') l.qty = num(e.target.value); else if (k === 'unit_price' || k === 'discount') l[k] = toHalalas(e.target.value || 0); else if (k === 'description') l.description = e.target.value; totals(); });
@@ -3192,7 +3200,7 @@ async function posView() {
       <p class="help err" id="poserr" role="alert"></p>
       <div class="grid g2" style="gap:8px"><button class="btn primary lg" id="paycash">${icon('pos')}نقداً</button><button class="btn secondary lg" id="paycard">شبكة / مدى</button></div>
       <button class="btn ghost sm" id="posclear" style="margin-top:8px;width:100%">إفراغ السلة</button></aside></div>`;
-  const tot = () => { let s = 0, v = 0; cart.forEach(l => { const it = I[l.id]; const k = lineCalc({ qty: l.qty, unit_price: Number(it.sale_price), discount: 0, vat_rate: it.tax_category === 'S' ? 15 : 0 }); s += k.net; v += k.vat; }); return { s, v, t: s + v }; };
+  const tot = () => { let s = 0; const vr = []; cart.forEach(l => { const it = I[l.id], r = it.tax_category === 'S' ? 15 : 0; const k = lineCalc({ qty: l.qty, unit_price: Number(it.sale_price), discount: 0, vat_rate: r }); s += k.net; vr.push([k.net, r]); }); const v = docVat(vr); return { s, v, t: s + v }; };
   const drawGrid = () => { const f = q ? sell.filter(i => (i.name_ar + ' ' + (i.sku || '') + ' ' + (i.barcode || '')).toLowerCase().includes(q.toLowerCase())) : sell;
     $('#posg').innerHTML = f.length ? f.map(i => `<button class="pos-tile" data-add="${esc(i.id)}"><b>${esc(i.name_ar)}</b><span class="num">${money(i.sale_price)}</span>${i.track_stock ? `<span class="xs ${i.on_hand <= 0 ? 'down' : 'muted'}">المتاح ${fq(i.on_hand)}</span>` : '<span class="xs muted">خدمة</span>'}</button>`).join('')
       : `<p class="muted">${sell.length ? 'لا نتائج.' : 'لا توجد أصناف لها سعر بيع. أضفها من <a href="#/items">الأصناف</a>.'}</p>`; };
