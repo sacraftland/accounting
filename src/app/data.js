@@ -185,6 +185,10 @@ const LocalAPI = (() => {
 // Auth: email + password (with email confirmation), magic link, password
 // reset and Google — all through Supabase Auth with the project's own keys.
 const AR_ERRORS = [
+  [/RESET_ZATCA_LIVE/, 'لا يمكن التصفير بعد الربط الفعلي مع هيئة الزكاة — الفواتير المرسلة لا تُمسح'],
+  [/ZATCA_ORG_INCOMPLETE/, 'أكمل بيانات الشركة أولاً: الرقم الضريبي والسجل التجاري والعنوان الوطني (الشارع، رقم المبنى، المدينة، الرمز البريدي)'],
+  [/ZATCA_NO_DEVICE/, 'لا يوجد جهاز مربوط مع الهيئة — اربط من الإعدادات ← الربط مع هيئة الزكاة'],
+  [/ZATCA_DEVICE_BUSY/, 'فاتورة أخرى قيد الإرسال الآن — حاول بعد ثوانٍ'],
   [/RESET_CONFIRM/, 'اكتب اسم الشركة كما هو للتأكيد'],
   [/RESET_BROKEN/, 'تعذّر التصفير بأمان — لم يُمسح شيء'],
   [/BACKUP_IDS_TAKEN/, 'هذه النسخة استُرجعت من قبل — أعد اختيار الملف ليُجهَّز من جديد'],

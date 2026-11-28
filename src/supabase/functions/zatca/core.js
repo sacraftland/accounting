@@ -6,7 +6,10 @@
 // We write the XML already in canonical form (no XML declaration inside the hashed part, no self-closing tags,
 // attributes in canonical order), so removing those three elements as text gives the canonical string directly.
 // tests/zatca_check.py re-derives every hash independently with lxml.
-import { createHash, createSign, createVerify, generateKeyPairSync, X509Certificate, createPublicKey, createPrivateKey } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { Buffer } from 'node:buffer';
+// Elliptic-curve maths (secp256k1 ECDSA) and certificate parsing are done here in plain JavaScript (BigInt), so the module
+// does not depend on which curves a runtime's crypto library supports. Only SHA-256 / HMAC come from node:crypto.
 
 export const INITIAL_PIH = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==';
 const NS = 'xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"';
@@ -227,6 +230,51 @@ export function pureInvoice(xml) {
 }
 export const invoiceHash = xml => b64(sha256(pureInvoice(xml)));
 
+
+// ---------- secp256k1 ----------
+const P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn, N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+const G = [0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n, 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n];
+const mod = (a, m = P) => { const r = a % m; return r >= 0n ? r : r + m; };
+const inv = (a, m = P) => { let [x, y, u, v] = [mod(a, m), m, 1n, 0n]; while (x) { const q = y / x; [x, y, u, v] = [y - q * x, x, v - q * u, u]; } return mod(v, m); };
+const padd = (A, B) => { if (!A) return B; if (!B) return A;
+  if (A[0] === B[0]) { if (mod(A[1] + B[1]) === 0n) return null; const l = mod(3n * A[0] * A[0] * inv(2n * A[1])); const x = mod(l * l - 2n * A[0]); return [x, mod(l * (A[0] - x) - A[1])]; }
+  const l = mod((B[1] - A[1]) * inv(B[0] - A[0])); const x = mod(l * l - A[0] - B[0]); return [x, mod(l * (A[0] - x) - A[1])]; };
+const pmul = (k, Q = G) => { let R = null, A = Q; while (k > 0n) { if (k & 1n) R = padd(R, A); A = padd(A, A); k >>= 1n; } return R; };
+const toBig = b => BigInt('0x' + (Buffer.from(b).toString('hex') || '0'));
+const to32 = n => Buffer.from(n.toString(16).padStart(64, '0'), 'hex');
+const derInt = n => { let b = Buffer.from(n.toString(16).padStart(n.toString(16).length + (n.toString(16).length % 2), '0'), 'hex'); if (b[0] & 0x80) b = Buffer.concat([Buffer.from([0]), b]); return tlvd(0x02, b); };
+function rfc6979(d, h) {                                     // deterministic k (RFC 6979, HMAC-SHA256)
+  const x = to32(d), hm = to32(mod(toBig(h), N));
+  let V = Buffer.alloc(32, 1), K = Buffer.alloc(32, 0);
+  const H = (k, ...d) => createHmac('sha256', k).update(Buffer.concat(d)).digest();
+  K = H(K, V, Buffer.from([0]), x, hm); V = H(K, V); K = H(K, V, Buffer.from([1]), x, hm); V = H(K, V);
+  for (;;) { V = H(K, V); const k = toBig(V); if (k > 0n && k < N) return k; K = H(K, V, Buffer.from([0])); V = H(K, V); }
+}
+/** ECDSA-SHA256 signature (DER, low-S) of msg with private scalar d. */
+function ecSign(msg, d) {
+  const h = sha256(msg), e = mod(toBig(h), N);
+  for (;;) { const k = rfc6979(d, h), R = pmul(k), r = mod(R[0], N); if (!r) continue;
+    let s = mod(inv(k, N) * (e + r * d), N); if (!s) continue; if (s > N / 2n) s = N - s;
+    return seq(derInt(r), derInt(s)); }
+}
+function ecVerify(msg, sigDer, Q) {
+  const [ri, si] = derItems(sigDer, derItems(sigDer)[0].hstart); const r = toBig(sigDer.subarray(ri.hstart, ri.end)), s = toBig(sigDer.subarray(si.hstart, si.end));
+  if (r <= 0n || r >= N || s <= 0n || s >= N) return false;
+  const e = mod(toBig(sha256(msg)), N), w = inv(s, N), X = padd(pmul(mod(e * w, N)), pmul(mod(r * w, N), Q));
+  return !!X && mod(X[0], N) === r;
+}
+const OID_EC = '1.2.840.10045.2.1', OID_K1 = '1.3.132.0.10';
+const pointBytes = Q => Buffer.concat([Buffer.from([4]), to32(Q[0]), to32(Q[1])]);
+const spkiOf = Q => seq(seq(oid(OID_EC), oid(OID_K1)), tlvd(0x03, Buffer.concat([Buffer.from([0]), pointBytes(Q)])));
+const pem = (label, der) => `-----BEGIN ${label}-----\n${b64(der).match(/.{1,64}/g).join('\n')}\n-----END ${label}-----\n`;
+/** Private scalar from an "EC PRIVATE KEY" (SEC1) or "PRIVATE KEY" (PKCS#8) PEM. */
+export function privateScalar(keyPem) {
+  const der = Buffer.from(String(keyPem).replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64');
+  let items = derItems(der, derItems(der)[0].hstart);
+  if (items[1].tag === 0x30) { const inner = der.subarray(items[2].hstart, items[2].end); items = derItems(inner, derItems(inner)[0].hstart); return toBig(inner.subarray(items[1].hstart, items[1].end)); }
+  return toBig(der.subarray(items[1].hstart, items[1].end));
+}
+
 // ---------- certificate & keys ----------
 function derItems(buf, off = 0, end = buf.length) {     // minimal DER walker
   const out = [];
@@ -238,19 +286,24 @@ function derItems(buf, off = 0, end = buf.length) {     // minimal DER walker
   return out;
 }
 export const certBody = pem => String(pem).replace(/-----(BEGIN|END) CERTIFICATE-----/g, '').replace(/\s+/g, '');
+const DN = { '2.5.4.3': 'CN', '0.9.2342.19200300.100.1.25': 'DC', '2.5.4.10': 'O', '2.5.4.11': 'OU', '2.5.4.6': 'C', '2.5.4.7': 'L', '2.5.4.8': 'ST', '1.2.840.113549.1.9.1': 'emailAddress' };
+const oidStr = b => { const out = [Math.floor(b[0] / 40), b[0] % 40]; let v = 0; for (const x of b.subarray(1)) { v = v * 128 + (x & 0x7f); if (!(x & 0x80)) { out.push(v); v = 0; } } return out.join('.'); };
 export function certInfo(certPem) {
   const body = certBody(certPem), der = Buffer.from(body, 'base64');
-  const x = new X509Certificate(der);
   const top = derItems(der)[0], parts = derItems(der, top.hstart, top.end);    // tbs, alg, BIT STRING
-  const sig = der.subarray(parts[2].hstart + 1, parts[2].end);                  // skip unused-bits byte
+  let tbs = derItems(der, parts[0].hstart, parts[0].end); if (tbs[0].tag === 0xa0) tbs = tbs.slice(1);   // [serial, alg, issuer, validity, subject, spki]
+  const issuer = derItems(der, tbs[2].hstart, tbs[2].end).map(set => { const av = derItems(der, set.hstart, set.end)[0], [o, v] = derItems(der, av.hstart, av.end);
+    const id = oidStr(der.subarray(o.hstart, o.end)); return `${DN[id] || id}=${der.subarray(v.hstart, v.end).toString('utf8')}`; });
+  const spki = der.subarray(tbs[5].start, tbs[5].end), spkiParts = derItems(der, tbs[5].hstart, tbs[5].end);
+  const pt = der.subarray(spkiParts[1].hstart + 2, spkiParts[1].end);             // skip unused-bits byte and 0x04
   return {
     body,
     hash: b64(Buffer.from(sha256(body).toString('hex'))),       // ZATCA: base64 of the hex digest of the base64 text
-    issuer: x.issuer.split('\n').reverse().join(', '),
-    serial: BigInt('0x' + x.serialNumber).toString(10),
-    publicKey: x.publicKey.export({ type: 'spki', format: 'der' }),
-    signature: sig,
-    notAfter: x.validTo,
+    issuer: issuer.reverse().join(', '),
+    serial: toBig(der.subarray(tbs[0].hstart, tbs[0].end)).toString(10),
+    publicKey: Buffer.from(spki),
+    point: [toBig(pt.subarray(0, 32)), toBig(pt.subarray(32, 64))],
+    signature: der.subarray(parts[2].hstart + 1, parts[2].end),                 // skip unused-bits byte
   };
 }
 
@@ -357,8 +410,7 @@ export function decodeTlv(base64) {
 export function signInvoice({ xml, totals, simplified }, { certPem, privateKeyPem, sellerName, vatNumber, issueDate, issueTime, signingTime }) {
   const hash = invoiceHash(xml);
   const c = certInfo(certPem);
-  const signer = createSign('sha256'); signer.update(Buffer.from(hash, 'base64'));
-  const signature = signer.sign(createPrivateKey(privateKeyPem)).toString('base64');
+  const signature = b64(ecSign(Buffer.from(hash, 'base64'), privateScalar(privateKeyPem)));
   const ts = `${issueDate}T${String(issueTime).slice(0, 8)}Z`;
   const qr = tlv([sellerName, vatNumber, ts, sar(totals.total), sar(totals.vat), hash, signature, c.publicKey, ...(simplified ? [c.signature] : [])]).toString('base64');
   const t = signingTime || new Date().toISOString().slice(0, 19) + 'Z';     // same form as the SDK sample
@@ -370,14 +422,13 @@ export function signInvoice({ xml, totals, simplified }, { certPem, privateKeyPe
 export function verifySignature(xml, certPem) {
   const h = (xml.match(/<ds:DigestValue>([^<]+)<\/ds:DigestValue>/) || [])[1];
   const sv = (xml.match(/<ds:SignatureValue>([^<]+)<\/ds:SignatureValue>/) || [])[1];
-  const v = createVerify('sha256'); v.update(Buffer.from(h, 'base64'));
-  return { hashOk: h === invoiceHash(xml), signatureOk: v.verify(new X509Certificate(Buffer.from(certBody(certPem), 'base64')).publicKey, Buffer.from(sv, 'base64')) };
+  return { hashOk: h === invoiceHash(xml), signatureOk: ecVerify(Buffer.from(h, 'base64'), Buffer.from(sv, 'base64'), certInfo(certPem).point) };
 }
 
 // ---------- keys & CSR (onboarding) ----------
 export function newKeyPair() {
-  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'secp256k1' });
-  return privateKey.export({ type: 'sec1', format: 'pem' });
+  let d; do d = toBig(randomBytes(32)); while (d <= 0n || d >= N);
+  return pem('EC PRIVATE KEY', seq(Buffer.from([2, 1, 1]), tlvd(0x04, to32(d)), tlvd(0xa0, oid(OID_K1)), tlvd(0xa1, tlvd(0x03, Buffer.concat([Buffer.from([0]), pointBytes(pmul(d))])))));
 }
 // DER encoding, just what a PKCS#10 request needs
 const len = n => n < 128 ? Buffer.from([n]) : (n < 256 ? Buffer.from([0x81, n]) : Buffer.from([0x82, n >> 8, n & 255]));
@@ -397,7 +448,7 @@ export const TEMPLATE = { sandbox: 'TSTZATCA-Code-Signing', simulation: 'PREZATC
  * p: { environment, commonName, orgName, branchName, vatNumber, egsSerial ('1-x|2-y|3-z'), invoiceTypes ('1100'), address, industry }
  */
 export function buildCSR(privateKeyPem, p) {
-  const key = createPrivateKey(privateKeyPem), spki = createPublicKey(key).export({ type: 'spki', format: 'der' });
+  const d = privateScalar(privateKeyPem), spki = spkiOf(pmul(d));
   const subject = seq(rdn(OID.C, 'SA', printable), rdn(OID.OU, p.branchName), rdn(OID.O, p.orgName), rdn(OID.CN, p.commonName));
   const dir = seq(rdn(OID.SN, p.egsSerial), rdn(OID.UID, p.vatNumber), rdn(OID.title, p.invoiceTypes || '1100'), rdn(OID.registeredAddress, p.address), rdn(OID.businessCategory, p.industry));
   const san = seq(tlvd(0xa4, dir));                                  // GeneralNames { [4] directoryName }
@@ -406,7 +457,6 @@ export function buildCSR(privateKeyPem, p) {
     seq(oid(OID.san), tlvd(0x04, san)));
   const attrs = tlvd(0xa0, seq(oid(OID.extReq), set(exts)));
   const info = seq(Buffer.from([0x02, 0x01, 0x00]), subject, Buffer.from(spki), attrs);
-  const s = createSign('sha256'); s.update(info);
-  const csr = seq(info, seq(oid(OID.ecdsaSha256)), tlvd(0x03, Buffer.concat([Buffer.from([0]), s.sign(key)])));
+  const csr = seq(info, seq(oid(OID.ecdsaSha256)), tlvd(0x03, Buffer.concat([Buffer.from([0]), ecSign(info, d)])));
   return `-----BEGIN CERTIFICATE REQUEST-----\n${b64(csr).match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE REQUEST-----`;
 }

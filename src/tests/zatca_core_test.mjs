@@ -49,6 +49,13 @@ check('SDK sample: invoice hash reproduced', Z.invoiceHash(smp) === dvs[0], Z.in
 const sc = { hash: dvs[2], issuer: sv(/<ds:X509IssuerName>([^<]*)/), serial: sv(/<ds:X509SerialNumber>([^<]*)/) };
 const { createHash } = await import('node:crypto');
 check('SDK sample: signed-properties hash reproduced', Buffer.from(createHash('sha256').update(Z.signedPropsForHash(sv(/<xades:SigningTime>([^<]*)/), sc)).digest('hex')).toString('base64') === dvs[1]);
+const sci = Z.certInfo(sv(/<ds:X509Certificate>([^<]*)/));
+check('SDK sample: issuer and serial read from its certificate as ZATCA writes them', sci.issuer === sc.issuer && sci.serial === sc.serial, sci.issuer + ' / ' + sci.serial);
+const { X509Certificate, createVerify, createPublicKey } = await import('node:crypto');
+const nx = new X509Certificate(readFileSync(certFile));
+check('our certificate parser agrees with node:crypto', Z.certInfo(certPem).serial === BigInt('0x' + nx.serialNumber).toString() && Z.certInfo(certPem).issuer === nx.issuer.split('\n').reverse().join(', '));
+const sx = readFileSync(`${out}/simplified.xml`, 'utf8'), nv = createVerify('sha256'); nv.update(Buffer.from(sx.match(/<ds:DigestValue>([^<]+)/)[1], 'base64'));
+check('node:crypto verifies our ECDSA signature', nv.verify(nx.publicKey, Buffer.from(sx.match(/<ds:SignatureValue>([^<]+)/)[1], 'base64')));
 check('SDK sample: certificate digest reproduced', Z.certInfo(sv(/<ds:X509Certificate>([^<]*)/)).hash === dvs[2]);
 // CSR
 const k = Z.newKeyPair();
