@@ -5505,7 +5505,7 @@ const zChecks = list => `<table class="table" style="margin-top:8px"><thead><tr>
 
 async function zatcaView() {
   shell('zatca', loading());
-  const owner = !!ORG._owner, [{ devices }, branches] = await Promise.all([api.zatca('devices').catch(() => ({ devices: [] })), api.listBranches()]);
+  const owner = !!ORG?.perms?._owner, [{ devices }, branches] = await Promise.all([api.zatca('devices').catch(() => ({ devices: [] })), api.listBranches()]);
   const live = devices.find(d => d.environment === 'production' && d.status === 'production');
   const bname = id => (branches.find(b => b.id === id) || {}).name || '—';
   $('#main').innerHTML = `<div class="page-head"><h1>الربط مع هيئة الزكاة (المرحلة الثانية)</h1></div>
