@@ -411,7 +411,7 @@ export function signInvoice({ xml, totals, simplified }, { certPem, privateKeyPe
   const hash = invoiceHash(xml);
   const c = certInfo(certPem);
   const signature = b64(ecSign(Buffer.from(hash, 'base64'), privateScalar(privateKeyPem)));
-  const ts = `${issueDate}T${String(issueTime).slice(0, 8)}Z`;
+  const ts = `${issueDate}T${String(issueTime).slice(0, 8)}`;             // must equal IssueDate+IssueTime (KSA-25), no zone
   const qr = tlv([sellerName, vatNumber, ts, sar(totals.total), sar(totals.vat), hash, signature, c.publicKey, ...(simplified ? [c.signature] : [])]).toString('base64');
   const t = signingTime || new Date().toISOString().slice(0, 19) + 'Z';     // same form as the SDK sample
   const sph = b64(Buffer.from(sha256(signedPropsForHash(t, c)).toString('hex')));
