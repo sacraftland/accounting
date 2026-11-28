@@ -20,13 +20,14 @@ with lv(n, name, ok) as (values
   (15, 'النسخ الاحتياطي ومنشئ التقارير', to_regclass('public.saved_reports') is not null and to_regclass('public.backup_log') is not null),
   (16, 'تشديد صلاحيات الجداول', not exists (select 1 from information_schema.role_table_grants where table_schema = 'public' and (grantee = 'anon' or (grantee = 'authenticated' and privilege_type = 'TRUNCATE')))),
   (17, 'تصفير الشركة', to_regprocedure('public.reset_org(uuid,text,text)') is not null),
-  (18, 'ضريبة الفاتورة حسب النسبة (متطلب الهيئة)', position('group by vat_rate' in pg_get_functiondef('public.compute_lines(uuid,numeric)'::regprocedure)) > 0)
+  (18, 'ضريبة الفاتورة حسب النسبة (متطلب الهيئة)', position('group by vat_rate' in pg_get_functiondef('public.compute_lines(uuid,numeric)'::regprocedure)) > 0),
+  (19, 'الربط مع هيئة الزكاة (مفاتيح الأجهزة وتسلسل الفواتير)', to_regclass('public.zatca_secrets') is not null and to_regprocedure('public.zatca_commit(uuid,uuid,bigint,text,text,text,text,text,jsonb)') is not null)
 ),
-lvl as (select coalesce((select min(n) - 1 from lv where not ok), 18) l),
+lvl as (select coalesce((select min(n) - 1 from lv where not ok), 19) l),
 extra(n, ok, name) as (values
-  (19, (select count(*) from platform_admins) > 0, 'مالك النظام محدد (owner.sql)'),
-  (20, not exists (select 1 from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and not relrowsecurity), 'حماية الصفوف (RLS) مفعّلة على كل الجداول'),
-  (21, not exists (select 1 from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public' and privilege_type in ('SELECT','INSERT','UPDATE','DELETE')), 'الزائر بدون حساب لا يصل لأي جدول')
+  (20, (select count(*) from platform_admins) > 0, 'مالك النظام محدد (owner.sql)'),
+  (21, not exists (select 1 from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and not relrowsecurity), 'حماية الصفوف (RLS) مفعّلة على كل الجداول'),
+  (22, not exists (select 1 from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public' and privilege_type in ('SELECT','INSERT','UPDATE','DELETE')), 'الزائر بدون حساب لا يصل لأي جدول')
 )
 select "#", "الحالة", "الفحص" from (
   select n as "#", case when ok then '✓' else '✗' end as "الحالة", name as "الفحص" from lv
