@@ -12,6 +12,7 @@ const num = s => { const n = Number(toLatin(s)); return Number.isFinite(n) ? n :
 const icon = (n, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const KIND = { tax_invoice: 'فاتورة ضريبية', simplified_invoice: 'فاتورة مبسطة' };
 const PAY = { unpaid: ['غير مدفوع', 'b-bad'], partial: ['مدفوع جزئياً', 'b-warn'], paid: ['مدفوع', 'b-ok'] };
+const ZAT_KINDS = ['tax_invoice', 'simplified_invoice', 'credit_note', 'debit_note'];
 const ZAT = { not_sent: ['لم تُرسل', 'b-draft'], pending: ['بانتظار الربط مع زاتكا', 'b-info'], cleared: ['معتمدة', 'b-ok'], reported: ['مُبلَّغة', 'b-ok'], rejected: ['مرفوضة', 'b-bad'] };
 const METHOD = { cash: 'نقداً', card: 'شبكة / مدى', bank_transfer: 'تحويل بنكي' };
 const TAXCAT = { S: 'خاضع 15%', Z: 'نسبة صفرية', E: 'معفى' };
@@ -98,7 +99,7 @@ const NAV = [   // [route, icon, label, module, local-mode too?]
   ['g', '', 'الموارد البشرية', 'hr'], ['employees', 'users', 'الموظفون', 'hr'], ['payroll', 'receipt', 'مسيرات الرواتب', 'hr'], ['leaves', 'users', 'الإجازات', 'hr'], ['attendance', 'users', 'الحضور والانصراف', 'hr'], ['evaluations', 'users', 'تقييم الأداء', 'hr'],
   ['g', '', 'المهام والمشاريع', null], ['projects', 'box', 'المشاريع', 'accounting|manufacturing|reports'], ['tasks', 'check', 'المهام', null], ['display', 'chart', 'لوحة الورشة (شاشة)', 'accounting|manufacturing|hr|inventory'], ['feasibility', 'chart', 'دراسات الجدوى', 'feasibility'],
   ['g', '', 'المتابعة', null], ['commitments', 'bell', 'الالتزامات والتجديدات', null],
-  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['backup', 'lock', 'النسخ الاحتياطي', 'backup'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
+  ['g', '', '', null], ['branches', 'home', 'الفروع', 'settings'], ['import', 'down', 'استيراد من Excel', 'sales|purchases|inventory'], ['users', 'lock', 'المستخدمون والصلاحيات', 'users'], ['backup', 'lock', 'النسخ الاحتياطي', 'backup'], ['zatca', 'check', 'الربط مع هيئة الزكاة', 'settings'], ['appearance', 'gear', 'المظهر', null, 1], ['invoice-design', 'file', 'تصميم الفاتورة', 'settings'], ['settings', 'gear', 'الإعدادات', null, 1],
 ];
 const navVisible = ([k, , , mod, local]) => (api.mode === 'supabase' || local || k === 'g') && (!mod || mod.split('|').some(m => can(m)));
 let ORG = null;
@@ -397,9 +398,11 @@ async function invoiceView(id) {
     <div class="page-head no-print"><h1><span class="num">${esc(d.number)}</span></h1>${badge(PAY[d.payment_status])}${badge(ZAT[d.zatca_status] || ZAT.not_sent)}
       <button class="btn secondary" onclick="window.print()">${icon('down')}طباعة / PDF</button>
       <button class="btn secondary" id="thermal">${icon('receipt')}إيصال حراري</button>
+      ${api.mode === 'supabase' && can('sales', 'create') && ['pending', 'rejected'].includes(d.zatca_status) && ZAT_KINDS.includes(d.kind) ? `<button class="btn secondary" id="zsend">${icon('check')}إرسال للهيئة</button>` : ''}
       ${api.mode === 'supabase' && can('sales', 'create') ? '<button class="btn secondary" id="mkcn">إصدار إشعار دائن</button>' : ''}
       ${left > 0 ? `<a class="btn primary" href="#/receipts/new?party=${esc(d.party_id || '')}&doc=${esc(d.id)}">${icon('receipt')}تسجيل دفعة</a>` : ''}</div>
     ${!o.vat_number ? '<p class="note warn no-print" style="margin-bottom:16px">منشأتك بلا رقم ضريبي — رمز QR لن يكون صالحاً لزاتكا. أضفه من الإعدادات.</p>' : ''}
+    ${['rejected', 'warning'].includes(d.zatca_status) && d.zatca_response ? `<div class="note ${d.zatca_status === 'rejected' ? 'danger' : 'warn'} no-print" style="margin-bottom:16px"><b>${d.zatca_status === 'rejected' ? 'رفضتها الهيئة' : 'ملاحظات الهيئة'}:</b> ${esc([...(d.zatca_response.errors || []), ...(d.zatca_response.warnings || [])].join(' — ') || '—')}</div>` : ''}
     <article class="paper" aria-label="الفاتورة">
       <div class="hd"><div>${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="شعار ${esc(o.name_ar)}" style="max-height:56px;max-width:160px;display:block;margin-bottom:8px">` : ''}
         <b style="font-size:18px">${esc(o.name_ar)}</b><br>${o.vat_number ? `الرقم الضريبي: <span class="num">${esc(o.vat_number)}</span><br>` : ''}${o.cr_number ? `السجل التجاري: <span class="num">${esc(o.cr_number)}</span><br>` : ''}${addr(o)}</div>
@@ -427,7 +430,7 @@ async function invoiceView(id) {
   wireInvoiceActions(d);
 }
 
-function wireInvoiceActions(d) { if ($('#thermal')) $('#thermal').onclick = () => posReceipt(d, null, null, { reprint: true }); if ($('#mkcn')) $('#mkcn').onclick = async e => { e.target.disabled = true;
+function wireInvoiceActions(d) { if ($('#zsend')) $('#zsend').onclick = e => zatcaSubmit(d, e.currentTarget); if ($('#thermal')) $('#thermal').onclick = () => posReceipt(d, null, null, { reprint: true }); if ($('#mkcn')) $('#mkcn').onclick = async e => { e.target.disabled = true;
   try { const nid = await api.convertDocument(d.id, 'credit_note'); toast('أُنشئت مسودة إشعار دائن — عدّل الكميات المرتجعة ثم رحّلها'); location.hash = '#/credit-notes/' + nid + '/edit'; } catch (x) { fail(x); e.target.disabled = false; } }; }
 // ---------- customers ----------
 function partyDrawer(p, after, side = 'customer') {
@@ -585,7 +588,7 @@ async function trialBalanceView() {
 // ---------- settings ----------
 async function settingsView() {
   shell('settings', loading()); const o = ORG;
-  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a>${api.mode === 'supabase' && can('backup') ? `<a class="btn secondary" href="#/backup">${icon('lock')}النسخ الاحتياطي</a>` : ''}</div>
+  $('#main').innerHTML = `<div class="page-head"><h1>الإعدادات</h1>${api.mode === 'supabase' && can('settings', 'create') ? `<a class="btn secondary" href="#/invoice-design">${icon('file')}تصميم الفاتورة</a>` : ''}<a class="btn secondary" href="#/appearance">${icon('gear')}المظهر</a>${api.mode === 'supabase' && can('backup') ? `<a class="btn secondary" href="#/backup">${icon('lock')}النسخ الاحتياطي</a>` : ''}${api.mode === 'supabase' && can('settings') ? `<a class="btn secondary" href="#/zatca">${icon('check')}الربط مع هيئة الزكاة</a>` : ''}</div>
     <form class="card grid" id="sf" style="gap:20px;max-width:var(--l-form-max)" novalidate ${can('settings', 'create') ? '' : 'inert'}>
       <fieldset><legend>الشعار</legend><div class="row"><div class="logo-prev" id="lp">${o.logo_path ? `<img src="${esc(o.logo_path)}" alt="الشعار الحالي">` : icon('box')}</div>
         <div><input type="file" id="logo" accept="image/png,image/jpeg,image/svg+xml" aria-describedby="lh"><p class="help" id="lh">PNG أو JPG، حتى 300 كيلوبايت. يظهر على الفواتير وأعلى القائمة.</p>${o.logo_path ? '<button type="button" class="btn ghost sm" id="rmlogo">إزالة الشعار</button>' : ''}</div></div></fieldset>
@@ -657,7 +660,7 @@ const ROUTES = [
   ...THEME_ROUTES,
   ...DESIGN_ROUTES,
   ...FEAS_ROUTES,
-  ...BACKUP_ROUTES,
+  ...BACKUP_ROUTES, ...ZATCA_ROUTES,
   ...RB_ROUTES,
 ];
 async function route() {

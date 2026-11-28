@@ -513,6 +513,12 @@ const SupabaseAPI = (cfg) => {
     async saveLead(l) { const row = nulls({ ...l, org_id: await orgId(), updated_at: new Date().toISOString() }); return l.id ? ok(await sb.from('leads').update(row).eq('id', l.id).select().single()) : ok(await sb.from('leads').insert(row).select().single()); },
     async deleteLead(id) { ok(await sb.from('leads').delete().eq('id', id)); },
     async exportOrg(source = 'app') { return ok(await sb.rpc('export_org', { p_org: await orgId(), p_source: source })); },
+    async zatca(action, body = {}) {
+      const { data, error } = await sb.functions.invoke('zatca', { body: { action, org_id: await orgId(), ...body } });
+      if (error) { let m = error.message; try { const j = await error.context.json(); m = j.error || JSON.stringify(j); } catch { /* not json */ } throw new AppError(arErr(m)); }
+      if (data?.error) throw new AppError(arErr(data.error));
+      return data;
+    },
     async resetOrg(mode, confirm) { return ok(await sb.rpc('reset_org', { p_org: await orgId(), p_mode: mode, p_confirm: confirm })); },
     async importOrg(data, mode) { return ok(await sb.rpc('import_org', { p_data: data, p_mode: mode, p_target: mode === 'replace' ? await orgId() : null })); },
     async backupLog() { return ok(await sb.from('backup_log').select('*').eq('org_id', await orgId()).order('at', { ascending: false }).limit(60)); },

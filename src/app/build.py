@@ -18,7 +18,7 @@ html = f'''<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="كرافت لاند">
-<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js', {{ updateViaCache: 'none' }}));</script>
+<script>if ('serviceWorker' in navigator && !/^(localhost|127\\.0\\.0\\.1)$/.test(location.hostname)) addEventListener('load', () => navigator.serviceWorker.register('sw.js', {{ updateViaCache: 'none' }}));</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>{css}
@@ -33,7 +33,7 @@ html = f'''<!DOCTYPE html>
 {(here / 'qr.js').read_text()}
 const CHART = {json.dumps(chart, ensure_ascii=False)};
 {(here / 'data.js').read_text()}
-{(here / 'app.js').read_text().replace('// @@OPS@@', (here / 'ops.js').read_text() + '\n' + (here / 'reports.js').read_text() + '\n' + (here / 'reports2.js').read_text() + '\n' + (here / 'pos.js').read_text() + '\n' + (here / 'ext.js').read_text() + '\n' + (here / 'ext2.js').read_text() + '\n' + (here / 'ext3.js').read_text() + '\n' + (here / 'projects.js').read_text() + '\n' + (here / 'theme.js').read_text() + '\n' + (here / 'design.js').read_text() + '\n' + (here / 'feasibility.js').read_text() + '\n' + (here / 'backup.js').read_text().replace("/*@@BACKUP_PY@@*/''", __import__('json').dumps((here.parent / 'tools' / 'craftland-backup.py').read_text()).replace('</', '<\\/'), 1) + '\n' + (here / 'reportbuilder.js').read_text(), 1)}
+{(here / 'app.js').read_text().replace('// @@OPS@@', (here / 'ops.js').read_text() + '\n' + (here / 'reports.js').read_text() + '\n' + (here / 'reports2.js').read_text() + '\n' + (here / 'pos.js').read_text() + '\n' + (here / 'ext.js').read_text() + '\n' + (here / 'ext2.js').read_text() + '\n' + (here / 'ext3.js').read_text() + '\n' + (here / 'projects.js').read_text() + '\n' + (here / 'theme.js').read_text() + '\n' + (here / 'design.js').read_text() + '\n' + (here / 'feasibility.js').read_text() + '\n' + (here / 'backup.js').read_text().replace("/*@@BACKUP_PY@@*/''", __import__('json').dumps((here.parent / 'tools' / 'craftland-backup.py').read_text()).replace('</', '<\\/'), 1) + '\n' + (here / 'reportbuilder.js').read_text() + '\n' + (here / 'zatca.js').read_text(), 1)}
 </script>
 </body>
 </html>
