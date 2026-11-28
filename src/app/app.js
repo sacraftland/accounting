@@ -335,8 +335,8 @@ async function invoiceEditView(id) {
       <td><button type="button" class="btn ghost icon sm" data-del aria-label="حذف السطر ${i + 1}">${icon('trash')}</button></td></tr>`).join('');
     totals();
   };
-  const totals = () => { let s = 0, v = 0; lines.forEach((l, i) => { const c = lineCalc(l); const ok = Number.isFinite(c.net); s += ok ? c.net : 0; v += ok ? c.vat : 0;
-      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(c.net + c.vat) : '—'; });
+  const totals = () => { let s = 0, v = 0; const vr = []; lines.forEach((l, i) => { const c = lineCalc(l); const ok = Number.isFinite(c.net); s += ok ? c.net : 0; if (ok) vr.push([c.net, Number(l.vat_rate)]);
+      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(c.net + c.vat) : '—'; }); v = docVat(vr);
     $('#tSub').textContent = money(s); $('#tVat').textContent = money(v); $('#tTot').textContent = money(s + v) + ' ر.س'; };
   const kindCheck = () => { const k = $('#f-kind').value, p = parties.find(x => x.id === $('#f-party').value), w = $('#kindwarn');
     let msg = ''; if (k === 'tax_invoice' && !p) msg = 'الفاتورة الضريبية تحتاج عميلاً مسجلاً ضريبياً. اختر عميلاً أو غيّر النوع إلى مبسطة.';

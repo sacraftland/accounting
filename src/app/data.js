@@ -10,6 +10,8 @@ const VAT_RE = /^3[0-9]{13}3$/;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
 const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 const riyadhTime = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
+// VAT on the document = per rate, rounded once (ZATCA BR-S-09); lines keep their own rounded VAT for display
+const docVat = rows => { const g = {}; rows.forEach(([net, rate]) => { if (Number.isFinite(net)) g[rate] = (g[rate] || 0) + net; }); return Object.entries(g).reduce((t, [r, n]) => t + Math.round(n * Number(r) / 100), 0); };
 const lineCalc = l => { const gross = Math.round(Number(l.qty) * Number(l.unit_price)); const net = gross - (Number(l.discount) || 0); return { net, vat: Math.round(net * Number(l.vat_rate) / 100) }; };
 class AppError extends Error {}
 
@@ -131,7 +133,7 @@ const LocalAPI = (() => {
         if (d.kind === 'tax_invoice' && !party?.vat_number) throw new AppError('الفاتورة الضريبية تحتاج رقم ضريبي للعميل');
         const lines = S.lines.filter(l => l.document_id === id);
         if (!lines.length) throw new AppError('أضف سطراً واحداً على الأقل');
-        let sub = 0, vat = 0; lines.forEach(l => { const c = lineCalc(l); l.line_net = c.net; l.line_vat = c.vat; sub += c.net; vat += c.vat; });
+        let sub = 0; lines.forEach(l => { const c = lineCalc(l); l.line_net = c.net; l.line_vat = c.vat; sub += c.net; }); const vat = docVat(lines.map(l => [l.line_net, Number(l.vat_rate)]));
         if (sub <= 0) throw new AppError('إجمالي الفاتورة يجب أن يكون أكبر من صفر');
         Object.assign(d, { subtotal: sub, vat_total: vat, total: sub + vat });
         const rev = {}; lines.forEach(l => { const it = S.items.find(i => i.id === l.item_id); const a = it?.revenue_account_id || acct(it?.kind === 'service' ? 'service_revenue' : 'sales'); rev[a] = (rev[a] || 0) + l.line_net; });

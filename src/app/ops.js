@@ -127,8 +127,8 @@ async function docEditView(key, id) {
   };
   const drawLc = () => { if (!$('#lcs')) return; $('#lcs').innerHTML = lc.map((x, i) => `<div class="row" data-c="${i}" style="margin-bottom:8px"><input class="input" data-ck="description" value="${esc(x.description)}" placeholder="مثل: شحن بحري، جمارك" aria-label="وصف التكلفة" style="flex:2">
     <input class="input num" data-ck="amount" inputmode="decimal" value="${x.amount ? esc(money(x.amount)) : ''}" placeholder="0.00" aria-label="المبلغ" style="flex:1"><button type="button" class="btn ghost icon sm" data-cdel aria-label="حذف التكلفة">${icon('trash')}</button></div>`).join(''); };
-  const totals = () => { let s = 0, v = 0; lines.forEach((l, i) => { const k = lineCalc(l); const ok = Number.isFinite(k.net); s += ok ? k.net : 0; v += ok ? k.vat : 0;
-      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(k.net + k.vat) : '—'; });
+  const totals = () => { let s = 0, v = 0; const vr = []; lines.forEach((l, i) => { const k = lineCalc(l); const ok = Number.isFinite(k.net); s += ok ? k.net : 0; if (ok) vr.push([k.net, Number(l.vat_rate)]);
+      const cell = $(`tr[data-i="${i}"] [data-total]`); if (cell) cell.textContent = ok ? money(k.net + k.vat) : '—'; }); v = docVat(vr);
     $('#tSub').textContent = money(s); $('#tVat').textContent = money(v); $('#tTot').textContent = money(s + v) + ' ر.س'; };
   $('#lines').addEventListener('input', e => { const tr = e.target.closest('tr'), k = e.target.dataset.k; if (!tr || !k) return; const l = lines[tr.dataset.i];
     if (k === 'qty') l.qty = num(e.target.value); else if (k === 'unit_price' || k === 'discount') l[k] = toHalalas(e.target.value || 0); else if (k === 'description') l.description = e.target.value; totals(); });
